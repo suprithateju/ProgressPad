@@ -12,13 +12,26 @@ export default function Onboarding({ onComplete, backendUrl }) {
   const [dailyGoalHrs, setDailyGoalHrs] = useState(2);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [backendStatus, setBackendStatus] = useState('checking'); // 'checking', 'connected', 'failed'
+  const [fetchErrorMsg, setFetchErrorMsg] = useState('');
 
   // Fetch categories on load
   useEffect(() => {
+    setBackendStatus('checking');
     fetch(`${backendUrl}/api/exams/categories`)
-      .then(res => res.json())
-      .then(data => setCategories(data))
-      .catch(err => console.error('Error fetching categories:', err));
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        setCategories(data);
+        setBackendStatus('connected');
+      })
+      .catch(err => {
+        console.error('Error fetching categories:', err);
+        setBackendStatus('failed');
+        setFetchErrorMsg(err.message || 'Network request failed');
+      });
   }, [backendUrl]);
 
   // Fetch exams when category changes
@@ -249,6 +262,27 @@ export default function Onboarding({ onComplete, backendUrl }) {
               </button>
             </div>
           </form>
+        )}
+
+        {/* Connection Diagnostics Info (Shows up on fetch failure) */}
+        {backendStatus === 'failed' && (
+          <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', fontSize: '0.8rem', animation: 'fadeIn 0.25s ease-out' }}>
+            <strong style={{ color: '#ef4444', display: 'block', marginBottom: '0.4rem' }}>
+              ⚠️ Connection Diagnostics
+            </strong>
+            <div style={{ color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>
+              Frontend is trying to connect to backend at:
+            </div>
+            <code style={{ display: 'block', background: 'rgba(0,0,0,0.05)', padding: '0.3rem 0.5rem', borderRadius: '4px', wordBreak: 'break-all', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', marginBottom: '0.4rem', color: 'var(--text-primary)' }}>
+              {backendUrl}/api/exams/categories
+            </code>
+            <div style={{ color: 'var(--text-secondary)' }}>
+              Error: <span style={{ color: '#ef4444', fontWeight: 600 }}>{fetchErrorMsg}</span>
+            </div>
+            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-tertiary)', lineHeight: '1.4' }}>
+              Tip: If this is 'localhost', make sure you have added <strong>VITE_BACKEND_URL</strong> pointing to your Render backend on your Vercel project environment settings and redeployed.
+            </div>
+          </div>
         )}
       </div>
     </div>
