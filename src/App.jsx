@@ -159,7 +159,7 @@ export default function App() {
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
         <header className="navbar">
           <div className="brand">
-            <i className="ti ti-compass"></i>
+            <i className="ti ti-notebook"></i>
             <span>ProgressPad</span>
           </div>
         </header>
@@ -177,7 +177,7 @@ export default function App() {
       <header className="navbar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
           <div className="brand">
-            <i className="ti ti-compass"></i>
+            <i className="ti ti-notebook"></i>
             <span>ProgressPad</span>
           </div>
 
