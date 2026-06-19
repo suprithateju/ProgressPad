@@ -5,7 +5,7 @@ import MockTests from './components/MockTests';
 import Analytics from './components/Analytics';
 import AISpace from './components/AISpace';
 
-const BACKEND_URL = 'http://localhost:5000';
+const BACKEND_URL = 'https://progress-pad.onrender.com';
 
 export default function App() {
   const [userExamId, setUserExamId] = useState(null);
