@@ -531,77 +531,80 @@ export default function Dashboard({ userExamId, backendUrl, onSwitchToAIExplain,
                     </button>
                   </div>
 
-                  {/* Column Header */}
-                  <div className="sb-col-header">
-                    <span className="sbch-check">✓</span>
-                    <span className="sbch-topic">TOPIC & SECTION</span>
-                    <span className="sbch-resource">RESOURCE</span>
-                    <span className="sbch-pri">PRI</span>
-                    <span className="sbch-status">STATUS</span>
-                    <span style={{ textAlign: 'center' }}>FC</span>
-                  </div>
+                  {/* Table Wrapper for horizontal scroll on mobile */}
+                  <div className="sb-table-wrapper">
+                    {/* Column Header */}
+                    <div className="sb-col-header">
+                      <span className="sbch-check">✓</span>
+                      <span className="sbch-topic">TOPIC & SECTION</span>
+                      <span className="sbch-resource">RESOURCE</span>
+                      <span className="sbch-pri">PRI</span>
+                      <span className="sbch-status">STATUS</span>
+                      <span style={{ textAlign: 'center' }}>FC</span>
+                    </div>
 
-                  {/* Scrollable Topic List */}
-                  <div className="sb-list">
-                    {filteredTopics.length === 0 && (
-                      <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '1.5rem', fontSize: '0.8rem' }}>
-                        {subj.topics.length === 0 ? 'No topics mapped.' : 'No topics match your filters.'}
-                      </div>
-                    )}
-                    {filteredTopics.map(topic => {
-                      const statusStyle = getStatusColor(topic.status);
-                      return (
-                        <div key={topic.topic_id} className={`sb-row ${topic.done ? 'sb-row-done' : ''}`}>
+                    {/* Scrollable Topic List */}
+                    <div className="sb-list">
+                      {filteredTopics.length === 0 && (
+                        <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '1.5rem', fontSize: '0.8rem' }}>
+                          {subj.topics.length === 0 ? 'No topics mapped.' : 'No topics match your filters.'}
+                        </div>
+                      )}
+                      {filteredTopics.map(topic => {
+                        const statusStyle = getStatusColor(topic.status);
+                        return (
+                          <div key={topic.topic_id} className={`sb-row ${topic.done ? 'sb-row-done' : ''}`}>
 
-                          {/* Checkbox */}
-                          <div className="sb-row-check" onClick={e => { e.stopPropagation(); handleToggleDone(topic.topic_id, topic.done, topic.status); }}>
-                            <div className={`topic-tick ${topic.done ? 'topic-tick-done' : ''}`}>
-                              {topic.done && <i className="ti ti-check" style={{ fontSize: '0.65rem' }}></i>}
+                            {/* Checkbox */}
+                            <div className="sb-row-check" onClick={e => { e.stopPropagation(); handleToggleDone(topic.topic_id, topic.done, topic.status); }}>
+                              <div className={`topic-tick ${topic.done ? 'topic-tick-done' : ''}`}>
+                                {topic.done && <i className="ti ti-check" style={{ fontSize: '0.65rem' }}></i>}
+                              </div>
+                            </div>
+
+                            {/* Topic name + section — click opens DETAIL/INFO modal (restored) */}
+                            <div
+                              className="sb-row-topic"
+                              onClick={() => handleOpenDetail(topic)}
+                              title="Click to view topic details & AI explanation"
+                            >
+                              <div className="sb-topic-name">{topic.name}</div>
+                              {topic.section && <div className="sb-topic-section">{topic.section}</div>}
+                            </div>
+
+                            {/* Resource */}
+                            <div className="sb-row-resource">
+                              {topic.recommended_resource ? (
+                                <span className="sb-resource-chip" title={topic.recommended_resource}>
+                                  {topic.recommended_resource.length > 14 ? topic.recommended_resource.substring(0, 13) + '…' : topic.recommended_resource}
+                                </span>
+                              ) : <span style={{ color: 'var(--text-tertiary)', fontSize: '0.7rem' }}>—</span>}
+                            </div>
+
+                            {/* Priority Badge */}
+                            <div className="sb-row-pri">
+                              <span className="pri-badge" style={{ '--pri-color': getPriorityColor(topic.priority) }}>
+                                {topic.priority || 'Med'}
+                              </span>
+                            </div>
+
+                            {/* Status Pill - click opens detail modal */}
+                            <div className="sb-row-status" onClick={() => handleOpenDetail(topic)}>
+                              <span className="status-pill" style={{ background: statusStyle.bg, color: statusStyle.color }}>
+                                <span className="status-dot" style={{ background: statusStyle.color }}></span>
+                                {topic.status || 'Not Started'}
+                              </span>
+                            </div>
+
+                            {/* Flashcard Icon Button — separate feature */}
+                            <div className="sb-row-fc" onClick={e => { e.stopPropagation(); openFlashcards(topic.topic_id, topic.name, topic.section); }} title="View Flashcards">
+                              <span className="fc-row-btn">🃏</span>
                             </div>
                           </div>
 
-                          {/* Topic name + section — click opens DETAIL/INFO modal (restored) */}
-                          <div
-                            className="sb-row-topic"
-                            onClick={() => handleOpenDetail(topic)}
-                            title="Click to view topic details & AI explanation"
-                          >
-                            <div className="sb-topic-name">{topic.name}</div>
-                            {topic.section && <div className="sb-topic-section">{topic.section}</div>}
-                          </div>
-
-                          {/* Resource */}
-                          <div className="sb-row-resource">
-                            {topic.recommended_resource ? (
-                              <span className="sb-resource-chip" title={topic.recommended_resource}>
-                                {topic.recommended_resource.length > 14 ? topic.recommended_resource.substring(0, 13) + '…' : topic.recommended_resource}
-                              </span>
-                            ) : <span style={{ color: 'var(--text-tertiary)', fontSize: '0.7rem' }}>—</span>}
-                          </div>
-
-                          {/* Priority Badge */}
-                          <div className="sb-row-pri">
-                            <span className="pri-badge" style={{ '--pri-color': getPriorityColor(topic.priority) }}>
-                              {topic.priority || 'Med'}
-                            </span>
-                          </div>
-
-                          {/* Status Pill - click opens detail modal */}
-                          <div className="sb-row-status" onClick={() => handleOpenDetail(topic)}>
-                            <span className="status-pill" style={{ background: statusStyle.bg, color: statusStyle.color }}>
-                              <span className="status-dot" style={{ background: statusStyle.color }}></span>
-                              {topic.status || 'Not Started'}
-                            </span>
-                          </div>
-
-                          {/* Flashcard Icon Button — separate feature */}
-                          <div className="sb-row-fc" onClick={e => { e.stopPropagation(); openFlashcards(topic.topic_id, topic.name, topic.section); }} title="View Flashcards">
-                            <span className="fc-row-btn">🃏</span>
-                          </div>
-                        </div>
-
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               );

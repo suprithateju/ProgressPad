@@ -1720,3 +1720,15 @@ p {
 .mobile-bottom-nav {
   display: none;
 }
+
+/* Table horizontal scroll wrapper */
+.sb-table-wrapper {
+  overflow-x: auto;
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.sb-table-wrapper .sb-col-header,
+.sb-table-wrapper .sb-list {
+  min-width: 520px;
+}
