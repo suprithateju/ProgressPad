@@ -175,7 +175,7 @@ export default function App() {
       
       {/* Dynamic Navigation Header */}
       <header className="navbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+        <div className="navbar-left">
           <div className="brand">
             <i className="ti ti-notebook"></i>
             <span>ProgressPad</span>

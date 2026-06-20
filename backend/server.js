@@ -188,13 +188,20 @@ app.get('/api/users/me/exams', async (req, res) => {
         WHERE user_exam_id = ?
       `, [ue.id]);
 
+      const subjects = await query(`
+        SELECT * FROM exam_subjects 
+        WHERE exam_id = ? 
+        ORDER BY sort_order
+      `, [ue.exam_id]);
+
       result.push({
         ...ue,
         is_primary: !!ue.is_primary,
         totalTopics: totalTopicsRow.count || 0,
         doneTopics: doneTopicsRow.count || 0,
         avgMockScore: mockAvgRow.avg_score !== null ? parseFloat(mockAvgRow.avg_score.toFixed(1)) : null,
-        mockCount: mockAvgRow.count || 0
+        mockCount: mockAvgRow.count || 0,
+        subjects
       });
     }
 
@@ -271,11 +278,18 @@ app.get('/api/users/me/exams/:id', async (req, res) => {
       return res.status(404).json({ error: 'User enrollment not found' });
     }
 
+    const subjects = await query(`
+      SELECT * FROM exam_subjects 
+      WHERE exam_id = ? 
+      ORDER BY sort_order
+    `, [ue.exam_id]);
+
     res.json({
       ...ue,
       is_primary: !!ue.is_primary,
       tiers: ue.tiers ? JSON.parse(ue.tiers) : [],
-      marking_scheme: ue.marking_scheme ? JSON.parse(ue.marking_scheme) : {}
+      marking_scheme: ue.marking_scheme ? JSON.parse(ue.marking_scheme) : {},
+      subjects
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

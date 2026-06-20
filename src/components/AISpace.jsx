@@ -135,8 +135,8 @@ export default function AISpace({ userExamId, backendUrl, activeExamDetails, ini
         body: JSON.stringify({
           message: userMsg.text,
           history: chatHistory.slice(-10), // send last 10 exchanges
-          examName: activeExamDetails?.name,
-          categoryName: activeExamDetails?.slug,
+          examName: activeExamDetails?.exam_name || activeExamDetails?.name,
+          categoryName: activeExamDetails?.exam_slug || activeExamDetails?.slug,
           targetDate: activeExamDetails?.target_date,
           progressStats: {
             totalCount,
@@ -255,7 +255,7 @@ export default function AISpace({ userExamId, backendUrl, activeExamDetails, ini
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          examA: { name: activeExamDetails?.name, subjects: activeExamDetails?.subjects.map(s => s.name) },
+          examA: { name: activeExamDetails?.exam_name || activeExamDetails?.name, subjects: (activeExamDetails?.subjects || []).map(s => s.name) },
           examB: { name: targetExam.name, subjects: targetExam.tiers ? JSON.parse(targetExam.tiers).map(t => t.name) : [] },
           topicsA: flatTopicsA,
           topicsB: flatTopicsB
@@ -294,7 +294,7 @@ export default function AISpace({ userExamId, backendUrl, activeExamDetails, ini
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          examName: activeExamDetails?.name,
+          examName: activeExamDetails?.exam_name || activeExamDetails?.name,
           targetDate: target || '90 days from now',
           dailyGoalHours: activeExamDetails?.daily_goal_hrs,
           remainingDays,

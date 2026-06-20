@@ -145,6 +145,12 @@ p {
   box-shadow: 0 1px 8px rgba(0,0,0,0.06);
 }
 
+.navbar-left {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -1713,6 +1719,58 @@ p {
   
   .fc-scene {
     height: 320px !important;
+  }
+
+  /* Responsive Navbar */
+  .navbar {
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 0.75rem !important;
+    padding: 0.75rem 1rem !important;
+  }
+  
+  .navbar-left {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.75rem !important;
+    width: 100% !important;
+  }
+
+  .exam-switcher-container {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.25rem !important;
+  }
+
+  .user-badge {
+    width: 100% !important;
+    justify-content: center !important;
+    margin-top: 0.25rem !important;
+  }
+
+  /* Responsive Board Controls */
+  .sb-controls {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.5rem !important;
+    padding: 0.6rem !important;
+  }
+  
+  .sb-filter-select {
+    width: 100% !important;
+  }
+  
+  .sb-search {
+    grid-column: span 1 !important;
+    width: 100% !important;
+  }
+  
+  .sb-add-btn {
+    width: 100% !important;
+    justify-content: center !important;
   }
 }
 
