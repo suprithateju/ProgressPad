@@ -5,7 +5,9 @@ import MockTests from './components/MockTests';
 import Analytics from './components/Analytics';
 import AISpace from './components/AISpace';
 
-const BACKEND_URL = 'https://progress-pad.onrender.com';
+const BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:5000'
+  : 'https://progress-pad.onrender.com';
 
 export default function App() {
   const [userExamId, setUserExamId] = useState(null);
@@ -22,8 +24,20 @@ export default function App() {
 
   // Load user's enrolled exams
   const fetchEnrolledExams = async (selectExamId = null) => {
+    const email = localStorage.getItem('user_email');
+    if (!email) {
+      setUserExamId(null);
+      setActiveExam(null);
+      setLoading(false);
+      return;
+    }
+
     try {
-      const res = await fetch(`${BACKEND_URL}/api/users/me/exams`);
+      const res = await fetch(`${BACKEND_URL}/api/users/me/exams`, {
+        headers: {
+          'X-User-Email': email
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         setEnrolledExams(data);

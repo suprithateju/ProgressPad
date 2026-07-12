@@ -6,6 +6,14 @@ export default function AISpace({ userExamId, backendUrl, activeExamDetails, ini
   const [examsRegistry, setExamsRegistry] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  const getHeaders = (extraHeaders = {}) => {
+    const email = localStorage.getItem('user_email') || '1';
+    return {
+      'X-User-Email': email,
+      ...extraHeaders
+    };
+  };
+
   // 1. Study Buddy (Chat) State
   const [chatMessage, setChatMessage] = useState('');
   const [chatHistory, setChatHistory] = useState([
@@ -45,7 +53,9 @@ export default function AISpace({ userExamId, backendUrl, activeExamDetails, ini
   useEffect(() => {
     const loadInit = async () => {
       try {
-        const sylRes = await fetch(`${backendUrl}/api/user-exams/${userExamId}/topics`);
+        const sylRes = await fetch(`${backendUrl}/api/user-exams/${userExamId}/topics`, {
+          headers: getHeaders()
+        });
         if (sylRes.ok) {
           const sylData = await sylRes.json();
           setSyllabus(sylData);
@@ -59,7 +69,9 @@ export default function AISpace({ userExamId, backendUrl, activeExamDetails, ini
           }
         }
 
-        const registryRes = await fetch(`${backendUrl}/api/exams`);
+        const registryRes = await fetch(`${backendUrl}/api/exams`, {
+          headers: getHeaders()
+        });
         if (registryRes.ok) {
           const regData = await registryRes.json();
           setExamsRegistry(regData.filter(e => e.id !== activeExamDetails?.id));
@@ -131,7 +143,7 @@ export default function AISpace({ userExamId, backendUrl, activeExamDetails, ini
     try {
       const res = await fetch(`${backendUrl}/api/ai/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           message: userMsg.text,
           history: chatHistory.slice(-10), // send last 10 exchanges
@@ -169,7 +181,7 @@ export default function AISpace({ userExamId, backendUrl, activeExamDetails, ini
     try {
       const res = await fetch(`${backendUrl}/api/ai/explain`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           topic: topicToQuery,
           examSlug: activeExamDetails?.exam_slug || activeExamDetails?.slug,
@@ -202,7 +214,7 @@ export default function AISpace({ userExamId, backendUrl, activeExamDetails, ini
     try {
       const res = await fetch(`${backendUrl}/api/ai/questions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           topic: topicToQuery,
           examSlug: activeExamDetails?.exam_slug || activeExamDetails?.slug,
@@ -242,7 +254,9 @@ export default function AISpace({ userExamId, backendUrl, activeExamDetails, ini
 
     try {
       // Fetch syllabus for comparison exam
-      const otherSylRes = await fetch(`${backendUrl}/api/exams/${targetExam.slug}/syllabus`);
+      const otherSylRes = await fetch(`${backendUrl}/api/exams/${targetExam.slug}/syllabus`, {
+        headers: getHeaders()
+      });
       const otherSyl = await otherSylRes.json();
       
       const flatTopicsA = [];
@@ -253,7 +267,7 @@ export default function AISpace({ userExamId, backendUrl, activeExamDetails, ini
 
       const res = await fetch(`${backendUrl}/api/ai/compare-exams`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           examA: { name: activeExamDetails?.exam_name || activeExamDetails?.name, subjects: (activeExamDetails?.subjects || []).map(s => s.name) },
           examB: { name: targetExam.name, subjects: targetExam.tiers ? JSON.parse(targetExam.tiers).map(t => t.name) : [] },
@@ -292,7 +306,7 @@ export default function AISpace({ userExamId, backendUrl, activeExamDetails, ini
     try {
       const res = await fetch(`${backendUrl}/api/ai/plan`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           examName: activeExamDetails?.exam_name || activeExamDetails?.name,
           targetDate: target || '90 days from now',

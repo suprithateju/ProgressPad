@@ -7,25 +7,41 @@ export default function Analytics({ userExamId, backendUrl, activeExamDetails })
   const [crossExams, setCrossExams] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const getHeaders = (extraHeaders = {}) => {
+    const email = localStorage.getItem('user_email') || '1';
+    return {
+      'X-User-Email': email,
+      ...extraHeaders
+    };
+  };
+
   const fetchAnalyticsData = async () => {
     try {
       // 1. Fetch Subject Progress
-      const pRes = await fetch(`${backendUrl}/api/user-exams/${userExamId}/analytics`);
+      const pRes = await fetch(`${backendUrl}/api/user-exams/${userExamId}/analytics`, {
+        headers: getHeaders()
+      });
       const progressData = await pRes.json();
       setSubjectStats(progressData);
 
       // 2. Fetch Mocks Trend
-      const tRes = await fetch(`${backendUrl}/api/user-exams/${userExamId}/mocks/trend`);
+      const tRes = await fetch(`${backendUrl}/api/user-exams/${userExamId}/mocks/trend`, {
+        headers: getHeaders()
+      });
       const trendData = await tRes.json();
       setMocksTrend(trendData);
 
       // 3. Fetch Diagnostics
-      const dRes = await fetch(`${backendUrl}/api/user-exams/${userExamId}/mocks/diagnostics`);
+      const dRes = await fetch(`${backendUrl}/api/user-exams/${userExamId}/mocks/diagnostics`, {
+        headers: getHeaders()
+      });
       const diagData = await dRes.json();
       setDiagnostics(diagData);
 
       // 4. Fetch Cross Exam summaries
-      const cRes = await fetch(`${backendUrl}/api/analytics/all-exams`);
+      const cRes = await fetch(`${backendUrl}/api/analytics/all-exams`, {
+        headers: getHeaders()
+      });
       const crossData = await cRes.json();
       setCrossExams(crossData);
     } catch (err) {

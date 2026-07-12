@@ -118,6 +118,14 @@ export default function Dashboard({ userExamId, backendUrl, onSwitchToAIExplain,
     ];
   };
 
+  const getHeaders = (extraHeaders = {}) => {
+    const email = localStorage.getItem('user_email') || '1';
+    return {
+      'X-User-Email': email,
+      ...extraHeaders
+    };
+  };
+
   const openFlashcards = async (topicId, topicName, section) => {
     setFcTitle(topicName);
     setFcSection(section || '');
@@ -127,7 +135,9 @@ export default function Dashboard({ userExamId, backendUrl, onSwitchToAIExplain,
     setFcLoading(true);
     setFcOpen(true);
     try {
-      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/topics/${topicId}/flashcards`);
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/topics/${topicId}/flashcards`, {
+        headers: getHeaders()
+      });
       if (!res.ok) throw new Error('API error');
       const data = await res.json();
       const cards = data.cards && data.cards.length > 0 ? data.cards : getLocalFlashcards(topicName);
@@ -142,7 +152,9 @@ export default function Dashboard({ userExamId, backendUrl, onSwitchToAIExplain,
 
   const fetchSyllabus = async () => {
     try {
-      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/topics`);
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/topics`, {
+        headers: getHeaders()
+      });
       if (!res.ok) throw new Error('Failed to load syllabus');
       const data = await res.json();
       setSyllabus(data);
@@ -156,14 +168,18 @@ export default function Dashboard({ userExamId, backendUrl, onSwitchToAIExplain,
 
   const fetchRevisionDue = async () => {
     try {
-      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/revision-due`);
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/revision-due`, {
+        headers: getHeaders()
+      });
       if (res.ok) { const data = await res.json(); setRevisionDue(data); }
     } catch {}
   };
 
   const fetchNextUp = async () => {
     try {
-      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/next-up`);
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/next-up`, {
+        headers: getHeaders()
+      });
       if (res.ok) { const data = await res.json(); setNextUpList(data); }
     } catch {}
   };
@@ -190,7 +206,7 @@ export default function Dashboard({ userExamId, backendUrl, onSwitchToAIExplain,
     try {
       const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/topics/${topicId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ done: nextDone, status: nextStatus })
       });
       if (res.ok) { fetchSyllabus(); fetchRevisionDue(); fetchNextUp(); }
@@ -212,7 +228,7 @@ export default function Dashboard({ userExamId, backendUrl, onSwitchToAIExplain,
     try {
       const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/topics/${selectedTopic.topic_id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ status: tempStatus, done: tempDone, notes: tempNotes, difficultyRating: tempRating > 0 ? tempRating : undefined })
       });
       if (res.ok) { setDetailModalOpen(false); fetchSyllabus(); fetchRevisionDue(); fetchNextUp(); }
@@ -231,7 +247,7 @@ export default function Dashboard({ userExamId, backendUrl, onSwitchToAIExplain,
     try {
       const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/topics/custom`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ subjectId: newTopicSubjectId, section: newTopicSection, topic: newTopicName, priority: newTopicPriority, recommendedResource: newTopicResource, difficulty: newTopicDiff })
       });
       if (res.ok) { setCustomModalOpen(false); setNewTopicName(''); setNewTopicSection(''); setNewTopicResource(''); fetchSyllabus(); fetchNextUp(); }

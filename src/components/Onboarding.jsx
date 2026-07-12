@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 
 export default function Onboarding({ onComplete, backendUrl }) {
   const [step, setStep] = useState(1);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [name, setName] = useState(localStorage.getItem('user_name') || '');
+  const [email, setEmail] = useState(localStorage.getItem('user_email') || '');
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [exams, setExams] = useState([]);
@@ -74,7 +74,10 @@ export default function Onboarding({ onComplete, backendUrl }) {
     try {
       const response = await fetch(`${backendUrl}/api/users/me/exams`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-User-Email': email
+        },
         body: JSON.stringify({
           examId: selectedExam.id,
           targetDate,

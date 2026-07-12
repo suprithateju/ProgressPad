@@ -18,6 +18,12 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Middleware to retrieve user email for multi-user isolation
+app.use((req, res, next) => {
+  req.userId = req.headers['x-user-email'] || '1';
+  next();
+});
+
 // Initialize Database & Seed data on startup
 try {
   await initDB();
@@ -162,8 +168,8 @@ app.get('/api/users/me/exams', async (req, res) => {
       FROM user_exams ue
       JOIN exams e ON ue.exam_id = e.id
       JOIN exam_categories c ON e.category_id = c.id
-      WHERE ue.user_id = '1'
-    `);
+      WHERE ue.user_id = ?
+    `, [req.userId]);
 
     const result = [];
 
@@ -221,7 +227,7 @@ app.post('/api/users/me/exams', async (req, res) => {
     }
 
     // Check if already enrolled
-    const existing = await get('SELECT * FROM user_exams WHERE user_id = \'1\' AND exam_id = ?', [examId]);
+    const existing = await get('SELECT * FROM user_exams WHERE user_id = ? AND exam_id = ?', [req.userId, examId]);
     if (existing) {
       await run(`
         UPDATE user_exams 
@@ -233,7 +239,7 @@ app.post('/api/users/me/exams', async (req, res) => {
     }
 
     // Check if other enrolled exams exist to determine primary flag
-    const primaryCheck = await get('SELECT COUNT(*) as count FROM user_exams WHERE user_id = \'1\'');
+    const primaryCheck = await get('SELECT COUNT(*) as count FROM user_exams WHERE user_id = ?', [req.userId]);
     const isPrimary = primaryCheck.count === 0 ? 1 : 0;
 
     const userExamId = uuidv4();
@@ -242,8 +248,8 @@ app.post('/api/users/me/exams', async (req, res) => {
     // Insert user exam enrollment
     await run(`
       INSERT INTO user_exams (id, user_id, exam_id, target_date, is_primary, enrolled_at, daily_goal_hrs)
-      VALUES (?, '1', ?, ?, ?, ?, ?)
-    `, [userExamId, examId, targetDate || '', isPrimary, enrolledAt, dailyGoalHrs || 2.0]);
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [userExamId, req.userId, examId, targetDate || '', isPrimary, enrolledAt, dailyGoalHrs || 2.0]);
 
     // SEED PROGRESS ROWS: Copy all topics mapped to this exam into user_topic_progress
     const examTopics = await query(`
@@ -253,8 +259,8 @@ app.post('/api/users/me/exams', async (req, res) => {
     for (const et of examTopics) {
       await run(`
         INSERT OR IGNORE INTO user_topic_progress (id, user_id, user_exam_id, topic_id, status, done, ease_factor)
-        VALUES (?, '1', ?, ?, 'Not Started', 0, 2.5)
-      `, [uuidv4(), userExamId, et.topic_id]);
+        VALUES (?, ?, ?, ?, 'Not Started', 0, 2.5)
+      `, [uuidv4(), req.userId, userExamId, et.topic_id]);
     }
 
     res.status(201).json({ message: 'Enrolled successfully', userExamId });
@@ -271,8 +277,8 @@ app.get('/api/users/me/exams/:id', async (req, res) => {
       SELECT ue.*, e.name as exam_name, e.slug as exam_slug, e.tiers, e.marking_scheme, e.safe_cutoff
       FROM user_exams ue
       JOIN exams e ON ue.exam_id = e.id
-      WHERE ue.id = ? AND ue.user_id = '1'
-    `, [id]);
+      WHERE ue.id = ? AND ue.user_id = ?
+    `, [id, req.userId]);
 
     if (!ue) {
       return res.status(404).json({ error: 'User enrollment not found' });
@@ -302,15 +308,15 @@ app.patch('/api/users/me/exams/:id', async (req, res) => {
     const { id } = req.params;
     const { targetDate, dailyGoalHrs, isPrimary } = req.body;
 
-    const ue = await get('SELECT * FROM user_exams WHERE id = ? AND user_id = \'1\'', [id]);
+    const ue = await get('SELECT * FROM user_exams WHERE id = ? AND user_id = ?', [id, req.userId]);
     if (!ue) {
       return res.status(404).json({ error: 'Enrollment not found' });
     }
 
     if (isPrimary === true || isPrimary === 1) {
       // Clear current primary
-      await run('UPDATE user_exams SET is_primary = 0 WHERE user_id = \'1\'');
-      await run('UPDATE user_exams SET is_primary = 1 WHERE id = ?', [id]);
+      await run('UPDATE user_exams SET is_primary = 0 WHERE user_id = ?', [req.userId]);
+      await run('UPDATE user_exams SET is_primary = 1 WHERE id = ? AND user_id = ?', [id, req.userId]);
     }
 
     if (targetDate !== undefined) {
@@ -331,8 +337,8 @@ app.patch('/api/users/me/exams/:id', async (req, res) => {
 app.patch('/api/users/me/exams/:id/primary', async (req, res) => {
   try {
     const { id } = req.params;
-    await run('UPDATE user_exams SET is_primary = 0 WHERE user_id = \'1\'');
-    const result = await run('UPDATE user_exams SET is_primary = 1 WHERE id = ? AND user_id = \'1\'', [id]);
+    await run('UPDATE user_exams SET is_primary = 0 WHERE user_id = ?', [req.userId]);
+    const result = await run('UPDATE user_exams SET is_primary = 1 WHERE id = ? AND user_id = ?', [id, req.userId]);
 
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Enrollment not found' });
@@ -348,16 +354,16 @@ app.patch('/api/users/me/exams/:id/primary', async (req, res) => {
 app.delete('/api/users/me/exams/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await run('DELETE FROM user_exams WHERE id = ? AND user_id = \'1\'', [id]);
+    const result = await run('DELETE FROM user_exams WHERE id = ? AND user_id = ?', [id, req.userId]);
 
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Enrollment not found' });
     }
 
     // Set another exam as primary if primary was deleted
-    const countRow = await get('SELECT COUNT(*) as count FROM user_exams WHERE user_id = \'1\' AND is_primary = 1');
+    const countRow = await get('SELECT COUNT(*) as count FROM user_exams WHERE user_id = ? AND is_primary = 1', [req.userId]);
     if (countRow.count === 0) {
-      const nextOne = await get('SELECT id FROM user_exams WHERE user_id = \'1\' LIMIT 1');
+      const nextOne = await get('SELECT id FROM user_exams WHERE user_id = ? LIMIT 1', [req.userId]);
       if (nextOne) {
         await run('UPDATE user_exams SET is_primary = 1 WHERE id = ?', [nextOne.id]);
       }
@@ -379,7 +385,7 @@ app.get('/api/user-exams/:id/topics', async (req, res) => {
     const { id } = req.params;
 
     // Verify user exam
-    const ue = await get('SELECT exam_id FROM user_exams WHERE id = ? AND user_id = \'1\'', [id]);
+    const ue = await get('SELECT exam_id FROM user_exams WHERE id = ? AND user_id = ?', [id, req.userId]);
     if (!ue) {
       return res.status(404).json({ error: 'User exam enrollment not found' });
     }
@@ -458,8 +464,8 @@ app.patch('/api/user-exams/:id/topics/:tid', async (req, res) => {
       const newId = uuidv4();
       await run(`
         INSERT INTO user_topic_progress (id, user_id, user_exam_id, topic_id, status, done, ease_factor)
-        VALUES (?, '1', ?, ?, 'Not Started', 0, 2.5)
-      `, [newId, userExamId, topicId]);
+        VALUES (?, ?, ?, ?, 'Not Started', 0, 2.5)
+      `, [newId, req.userId, userExamId, topicId]);
       progress = await get('SELECT * FROM user_topic_progress WHERE id = ?', [newId]);
     }
 
@@ -558,10 +564,10 @@ app.patch('/api/user-exams/:id/topics/:tid', async (req, res) => {
         const siblingProgressRows = await query(`
           SELECT id, user_exam_id, done 
           FROM user_topic_progress 
-          WHERE user_id = '1' 
+          WHERE user_id = ? 
             AND topic_id IN (${siblingIds.map(() => '?').join(',')})
             AND user_exam_id != ?
-        `, [...siblingIds, userExamId]);
+        `, [req.userId, ...siblingIds, userExamId]);
 
         for (const row of siblingProgressRows) {
           // Sync done state and status
@@ -602,8 +608,8 @@ app.get('/api/user-exams/:id/topics/:tid/flashcards', async (req, res) => {
       SELECT ue.exam_id, e.name as exam_name, e.slug as exam_slug
       FROM user_exams ue
       JOIN exams e ON ue.exam_id = e.id
-      WHERE ue.id = ? AND ue.user_id = '1'
-    `, [userExamId]);
+      WHERE ue.id = ? AND ue.user_id = ?
+    `, [userExamId, req.userId]);
 
     if (!ue) return res.status(404).json({ error: 'User exam not found' });
 
@@ -652,8 +658,8 @@ app.post('/api/user-exams/:id/topics/bulk', async (req, res) => {
       } else {
         await run(`
           INSERT INTO user_topic_progress (id, user_id, user_exam_id, topic_id, status, done, done_at)
-          VALUES (?, '1', ?, ?, ?, ?, ?)
-        `, [uuidv4(), userExamId, tid, status, nextDone, nextDone === 1 ? now : null]);
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [uuidv4(), req.userId, userExamId, tid, status, nextDone, nextDone === 1 ? now : null]);
       }
 
       // Sync siblings if shared topic
@@ -668,8 +674,8 @@ app.post('/api/user-exams/:id/topics/bulk', async (req, res) => {
               done = ?,
               status = ?,
               done_at = ?
-            WHERE user_id = '1' AND topic_id IN (${siblingIds.map(() => '?').join(',')}) AND user_exam_id != ?
-          `, [nextDone, status, nextDone === 1 ? now : null, ...siblingIds, userExamId]);
+            WHERE user_id = ? AND topic_id IN (${siblingIds.map(() => '?').join(',')}) AND user_exam_id != ?
+          `, [nextDone, status, nextDone === 1 ? now : null, req.userId, ...siblingIds, userExamId]);
         }
       }
     }
@@ -722,8 +728,8 @@ app.post('/api/user-exams/:id/topics/custom', async (req, res) => {
     const progressId = uuidv4();
     await run(`
       INSERT INTO user_topic_progress (id, user_id, user_exam_id, topic_id, status, done, ease_factor)
-      VALUES (?, '1', ?, ?, 'Not Started', 0, 2.5)
-    `, [progressId, userExamId, topicId]);
+      VALUES (?, ?, ?, ?, 'Not Started', 0, 2.5)
+    `, [progressId, req.userId, userExamId, topicId]);
 
     res.status(201).json({ message: 'Custom topic added successfully', topicId });
   } catch (err) {
@@ -926,8 +932,8 @@ app.get('/api/analytics/all-exams', async (req, res) => {
       SELECT ue.*, e.name as exam_name, e.slug as exam_slug, e.safe_cutoff
       FROM user_exams ue
       JOIN exams e ON ue.exam_id = e.id
-      WHERE ue.user_id = '1'
-    `);
+      WHERE ue.user_id = ?
+    `, [req.userId]);
 
     const result = [];
     for (const ue of enrolled) {

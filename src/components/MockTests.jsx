@@ -16,9 +16,19 @@ export default function MockTests({ userExamId, backendUrl, examSlug, activeExam
   const subjects = activeExamDetails?.subjects || [];
   const safeCutoff = activeExamDetails?.safe_cutoff || 0;
 
+  const getHeaders = (extraHeaders = {}) => {
+    const email = localStorage.getItem('user_email') || '1';
+    return {
+      'X-User-Email': email,
+      ...extraHeaders
+    };
+  };
+
   const fetchMocks = async () => {
     try {
-      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/mocks`);
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/mocks`, {
+        headers: getHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         setMocks(data);
@@ -80,7 +90,7 @@ export default function MockTests({ userExamId, backendUrl, examSlug, activeExam
     try {
       const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/mocks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           name: testName,
           testDate,
@@ -113,7 +123,8 @@ export default function MockTests({ userExamId, backendUrl, examSlug, activeExam
     if (!window.confirm('Are you sure you want to delete this mock test record?')) return;
     try {
       const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/mocks/${mockId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getHeaders()
       });
       if (res.ok) {
         fetchMocks();
