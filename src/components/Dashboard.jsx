@@ -559,10 +559,42 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
               </div>
               
               <form onSubmit={handleAddDailyTask} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem', marginBottom: '0.75rem' }}>
+                <select 
+                  className="sb-filter-select" 
+                  value="" 
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (!val) return;
+                    let matchedTopic = null;
+                    let matchedSubject = null;
+                    syllabus.forEach(s => {
+                      const t = s.topics.find(top => top.topic_id === val);
+                      if (t) {
+                        matchedTopic = t.name;
+                        matchedSubject = s.name;
+                      }
+                    });
+                    if (matchedTopic) {
+                      setNewTaskText(`Study: ${matchedTopic}`);
+                      setNewTaskSubject(matchedSubject || '');
+                    }
+                  }}
+                  style={{ width: '100%', fontSize: '0.75rem', padding: '0.35rem' }}
+                >
+                  <option value="">-- Select a Syllabus Topic --</option>
+                  {syllabus.map(s => (
+                    <optgroup key={s.id} label={s.name}>
+                      {s.topics.map(t => (
+                        <option key={t.topic_id} value={t.topic_id}>{t.name}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+
                 <input 
                   type="text" 
                   className="sb-search" 
-                  placeholder="Task (e.g. solve 10 MCQs)" 
+                  placeholder="Or type custom task..." 
                   value={newTaskText}
                   onChange={e => setNewTaskText(e.target.value)}
                   style={{ width: '100%', fontSize: '0.8rem' }}
