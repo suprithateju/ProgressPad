@@ -241,6 +241,19 @@ export const initDB = async () => {
     );
   `);
 
+  // 9. Daily Tasks
+  await run(`
+    CREATE TABLE IF NOT EXISTS daily_tasks (
+      id TEXT PRIMARY KEY,
+      user_exam_id TEXT NOT NULL,
+      task_text TEXT NOT NULL,
+      subject_name TEXT,
+      done INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(user_exam_id) REFERENCES user_exams(id) ON DELETE CASCADE
+    );
+  `);
+
   console.log('Database schema checked/initialized.');
 };
 

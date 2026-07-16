@@ -37,6 +37,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState('SQLite');
   const [dbModalOpen, setDbModalOpen] = useState(false);
+  const [streak, setStreak] = useState(0);
 
   useEffect(() => {
     const fetchDbStatus = async () => {
@@ -52,6 +53,27 @@ export default function App() {
     };
     fetchDbStatus();
   }, []);
+
+  useEffect(() => {
+    if (!userExamId) return;
+    const fetchGamification = async () => {
+      try {
+        const email = localStorage.getItem('user_email');
+        const res = await fetch(`${BACKEND_URL}/api/user-exams/${userExamId}/gamification`, {
+          headers: {
+            'X-User-Email': email
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setStreak(data.streak);
+        }
+      } catch (err) {
+        console.error('Failed to fetch gamification details:', err);
+      }
+    };
+    fetchGamification();
+  }, [userExamId]);
 
   // Load user's enrolled exams
   const fetchEnrolledExams = async (selectExamId = null) => {
@@ -297,6 +319,15 @@ export default function App() {
           <div className="user-badge">
             <i className="ti ti-alarm" style={{ color: 'var(--accent)' }}></i>
             <span>Daily Goal: <strong>{activeExam.daily_goal_hrs || 2.0} hrs</strong></span>
+          </div>
+        )}
+
+        {streak !== undefined && (
+          <div className="user-badge" style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)' }} title="Your consecutive study streak">
+            <i className="ti ti-flame" style={{ color: '#ef4444' }}></i>
+            <span style={{ color: '#ef4444', fontWeight: 600 }}>
+              {streak} Day Streak
+            </span>
           </div>
         )}
 

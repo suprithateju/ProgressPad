@@ -9,6 +9,11 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
   const [revisionDue, setRevisionDue] = useState([]);
   const [nextUpList, setNextUpList] = useState([]);
 
+  // Daily checklist states
+  const [dailyTasks, setDailyTasks] = useState([]);
+  const [newTaskText, setNewTaskText] = useState('');
+  const [newTaskSubject, setNewTaskSubject] = useState('');
+
   // Per-board filter state: { [subjectId]: { status: 'All', priority: 'All', search: '' } }
   const [boardFilters, setBoardFilters] = useState({});
 
@@ -186,10 +191,82 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
     } catch {}
   };
 
+  const fetchDailyTasks = async () => {
+    try {
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/daily-tasks`, {
+        headers: getHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDailyTasks(data);
+      }
+    } catch (err) {
+      console.error('Error fetching daily tasks:', err);
+    }
+  };
+
+  const handleAddDailyTask = async (e) => {
+    e.preventDefault();
+    if (!newTaskText.trim()) return;
+
+    try {
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/daily-tasks`, {
+        method: 'POST',
+        headers: {
+          ...getHeaders(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          taskText: newTaskText,
+          subjectName: newTaskSubject || null
+        })
+      });
+      if (res.ok) {
+        setNewTaskText('');
+        setNewTaskSubject('');
+        fetchDailyTasks();
+      }
+    } catch (err) {
+      console.error('Error adding daily task:', err);
+    }
+  };
+
+  const handleToggleDailyTask = async (taskId, currentDone) => {
+    try {
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/daily-tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: {
+          ...getHeaders(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ done: !currentDone })
+      });
+      if (res.ok) {
+        fetchDailyTasks();
+      }
+    } catch (err) {
+      console.error('Error toggling daily task:', err);
+    }
+  };
+
+  const handleDeleteDailyTask = async (taskId) => {
+    try {
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/daily-tasks/${taskId}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+      if (res.ok) {
+        fetchDailyTasks();
+      }
+    } catch (err) {
+      console.error('Error deleting daily task:', err);
+    }
+  };
+
   useEffect(() => {
     if (userExamId) {
       setLoading(true);
-      Promise.all([fetchSyllabus(), fetchRevisionDue(), fetchNextUp()]).finally(() => setLoading(false));
+      Promise.all([fetchSyllabus(), fetchRevisionDue(), fetchNextUp(), fetchDailyTasks()]).finally(() => setLoading(false));
     }
   }, [userExamId, backendUrl]);
 
@@ -372,6 +449,79 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
 
           {/* ---- LEFT SIDEBAR ---- */}
           <aside className="ws-sidebar">
+
+            {/* DAILY FOCUS CHECKLIST */}
+            <div className="glass-panel ws-sidebar-card" style={{ animation: 'sidebarSlideIn 0.4s ease-out both', animationDelay: '0.02s' }}>
+              <div className="ws-sidebar-title">
+                <i className="ti ti-checklist" style={{ color: 'var(--accent)' }}></i>
+                DAILY FOCUS AGENDA
+              </div>
+              
+              <form onSubmit={handleAddDailyTask} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem', marginBottom: '0.75rem' }}>
+                <input 
+                  type="text" 
+                  className="sb-search" 
+                  placeholder="Task (e.g. solve 10 MCQs)" 
+                  value={newTaskText}
+                  onChange={e => setNewTaskText(e.target.value)}
+                  style={{ width: '100%', fontSize: '0.8rem' }}
+                  required
+                />
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <select 
+                    className="sb-filter-select" 
+                    value={newTaskSubject} 
+                    onChange={e => setNewTaskSubject(e.target.value)}
+                    style={{ flex: 1, minWidth: 0, padding: '0.2rem', fontSize: '0.75rem' }}
+                  >
+                    <option value="">No Subject</option>
+                    {syllabus.map(s => (
+                      <option key={s.id} value={s.name}>{s.name}</option>
+                    ))}
+                  </select>
+                  <button type="submit" className="btn btn-primary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}>
+                    <i className="ti ti-plus"></i> Add
+                  </button>
+                </div>
+              </form>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', maxHeight: '180px', overflowY: 'auto' }}>
+                {dailyTasks.map(t => (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={t.done} 
+                        onChange={() => handleToggleDailyTask(t.id, t.done)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: '0.78rem', textDecoration: t.done ? 'line-through' : 'none', color: t.done ? 'var(--text-tertiary)' : 'var(--text-primary)', transition: 'all 0.15s' }}>
+                          {t.task_text}
+                        </span>
+                        {t.subject_name && (
+                          <span style={{ fontSize: '0.62rem', color: 'var(--accent)', fontWeight: 600 }}>
+                            {t.subject_name}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => handleDeleteDailyTask(t.id)} 
+                      style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0.1rem 0.2rem' }}
+                    >
+                      <i className="ti ti-trash"></i>
+                    </button>
+                  </div>
+                ))}
+                {dailyTasks.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
+                    No daily tasks added yet. Get planning!
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* OVERALL PROGRESS */}
             <div className="glass-panel ws-sidebar-card" style={{ animation: 'sidebarSlideIn 0.4s ease-out both', animationDelay: '0.05s' }}>

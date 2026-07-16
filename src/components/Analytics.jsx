@@ -6,6 +6,7 @@ export default function Analytics({ userExamId, backendUrl, activeExamDetails })
   const [diagnostics, setDiagnostics] = useState(null);
   const [crossExams, setCrossExams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [gamification, setGamification] = useState(null);
 
   const getHeaders = (extraHeaders = {}) => {
     const email = localStorage.getItem('user_email') || '1';
@@ -44,6 +45,15 @@ export default function Analytics({ userExamId, backendUrl, activeExamDetails })
       });
       const crossData = await cRes.json();
       setCrossExams(crossData);
+
+      // 5. Fetch Gamification
+      const gRes = await fetch(`${backendUrl}/api/user-exams/${userExamId}/gamification`, {
+        headers: getHeaders()
+      });
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        setGamification(gData);
+      }
     } catch (err) {
       console.error('Error fetching analytics:', err);
     }
@@ -204,6 +214,59 @@ export default function Analytics({ userExamId, backendUrl, activeExamDetails })
 
   return (
     <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+      
+      {/* Achievements & Badges Showcase */}
+      {gamification && (
+        <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+          <h3 style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <i className="ti ti-flame" style={{ color: '#ef4444' }}></i>
+            Achievements & Badges
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+            {gamification.badges.map(b => (
+              <div 
+                key={b.id} 
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '1rem', 
+                  padding: '1rem', 
+                  background: 'var(--bg-secondary)', 
+                  border: `1px solid ${b.unlocked ? 'var(--accent)' : 'var(--border-color)'}`, 
+                  borderRadius: '12px',
+                  boxShadow: b.unlocked ? '0 0 10px rgba(var(--accent-rgb), 0.1)' : 'none',
+                  filter: b.unlocked ? 'none' : 'grayscale(1)',
+                  opacity: b.unlocked ? 1 : 0.6,
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <div 
+                  style={{ 
+                    width: '48px', 
+                    height: '48px', 
+                    borderRadius: '50%', 
+                    background: b.unlocked ? 'rgba(var(--accent-rgb), 0.15)' : 'var(--bg-tertiary)', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    border: `2px solid ${b.unlocked ? 'var(--accent)' : 'var(--border-color)'}`
+                  }}
+                >
+                  <i className={`ti ${b.icon}`} style={{ fontSize: '1.5rem', color: b.unlocked ? 'var(--accent)' : 'var(--text-tertiary)' }}></i>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                    {b.name}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    {b.desc}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       
       {/* 2 Column Main Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>

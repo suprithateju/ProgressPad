@@ -73,12 +73,22 @@ export const saveUserCloudBackup = async (email) => {
         notes: m.notes
       }));
 
+      // Get daily tasks
+      const dailyTasksRows = await query('SELECT * FROM daily_tasks WHERE user_exam_id = ?', [ue.id]);
+      const dailyTasks = dailyTasksRows.map(t => ({
+        taskText: t.task_text,
+        subjectName: t.subject_name,
+        done: !!t.done,
+        createdAt: t.created_at
+      }));
+
       enrolledExams[examId] = {
         examId,
         dailyGoalHrs: ue.daily_goal_hrs,
         progress,
         customTopics,
-        mocks
+        mocks,
+        dailyTasks
       };
     }
 
@@ -277,6 +287,19 @@ export const restoreUserCloudBackup = async (email) => {
               m.tier || 'Prelims',
               m.notes || ''
             ]);
+          }
+        }
+      }
+
+      // 5. Restore Daily Tasks
+      if (Array.isArray(backupData.dailyTasks)) {
+        for (const t of backupData.dailyTasks) {
+          let existingTask = await get('SELECT id FROM daily_tasks WHERE user_exam_id = ? AND task_text = ? AND created_at = ?', [userExamId, t.taskText, t.createdAt]);
+          if (!existingTask) {
+            await run(`
+              INSERT INTO daily_tasks (id, user_exam_id, task_text, subject_name, done, created_at)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `, [uuidv4(), userExamId, t.taskText, t.subjectName || null, t.done ? 1 : 0, t.createdAt]);
           }
         }
       }

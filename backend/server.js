@@ -1231,6 +1231,178 @@ app.delete('/api/user-exams/:id/mocks/:mid', async (req, res) => {
 });
 
 // ----------------------------------------------------
+// DAILY TASKS AGENDA ENDPOINTS
+// ----------------------------------------------------
+
+app.get('/api/user-exams/:id/daily-tasks', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const today = new Date().toISOString().split('T')[0];
+    const tasks = await query(`
+      SELECT * FROM daily_tasks 
+      WHERE user_exam_id = ? AND substr(created_at, 1, 10) = ?
+      ORDER BY created_at ASC
+    `, [id, today]);
+    
+    const parsed = tasks.map(t => ({
+      ...t,
+      done: !!t.done
+    }));
+    res.json(parsed);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/user-exams/:id/daily-tasks', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { taskText, subjectName } = req.body;
+    if (!taskText) {
+      return res.status(400).json({ error: 'taskText is required' });
+    }
+    const taskId = uuidv4();
+    const createdAt = new Date().toISOString();
+    await run(`
+      INSERT INTO daily_tasks (id, user_exam_id, task_text, subject_name, done, created_at)
+      VALUES (?, ?, ?, ?, 0, ?)
+    `, [taskId, id, taskText, subjectName || null, createdAt]);
+
+    res.status(201).json({ message: 'Task added successfully', taskId });
+    saveUserCloudBackup(req.userId);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/user-exams/:id/daily-tasks/:tid', async (req, res) => {
+  try {
+    const { tid } = req.params;
+    const { done } = req.body;
+    const nextDone = done ? 1 : 0;
+    await run('UPDATE daily_tasks SET done = ? WHERE id = ?', [nextDone, tid]);
+    res.json({ message: 'Task updated successfully' });
+    saveUserCloudBackup(req.userId);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/user-exams/:id/daily-tasks/:tid', async (req, res) => {
+  try {
+    const { tid } = req.params;
+    await run('DELETE FROM daily_tasks WHERE id = ?', [tid]);
+    res.json({ message: 'Task deleted successfully' });
+    saveUserCloudBackup(req.userId);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// GAMIFICATION & STREAKS ENDPOINT
+// ----------------------------------------------------
+
+app.get('/api/user-exams/:id/gamification', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get all dates where progress was marked 'done = 1'
+    const progressDates = await query(`
+      SELECT DISTINCT substr(done_at, 1, 10) as date_str
+      FROM user_topic_progress
+      WHERE user_exam_id = ? AND done = 1 AND done_at IS NOT NULL
+    `, [id]);
+
+    // Get all dates where mock tests were taken
+    const mockDates = await query(`
+      SELECT DISTINCT substr(test_date, 1, 10) as date_str
+      FROM mock_tests
+      WHERE user_exam_id = ? AND test_date IS NOT NULL
+    `, [id]);
+
+    // Combine and get unique sorted dates (descending order)
+    const allDatesSet = new Set();
+    progressDates.forEach(d => allDatesSet.add(d.date_str));
+    mockDates.forEach(d => allDatesSet.add(d.date_str));
+
+    // Sort dates descending
+    const sortedDates = Array.from(allDatesSet).sort().reverse();
+
+    // Get local timezone offset to calculate today/yesterday in local time
+    const todayLocal = new Date();
+    const formatLocal = (d) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const date = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${date}`;
+    };
+
+    const todayStr = formatLocal(todayLocal);
+    const yesterday = new Date(todayLocal);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = formatLocal(yesterday);
+
+    let streak = 0;
+    if (sortedDates.length > 0) {
+      let latestDate = sortedDates[0];
+      
+      if (latestDate === todayStr || latestDate === yesterdayStr) {
+        streak = 1;
+        let currentExpected = new Date(latestDate);
+        
+        for (let i = 1; i < sortedDates.length; i++) {
+          currentExpected.setDate(currentExpected.getDate() - 1);
+          const expectedStr = formatLocal(currentExpected);
+          
+          if (sortedDates.includes(expectedStr)) {
+            streak++;
+          } else {
+            break;
+          }
+        }
+      }
+    }
+
+    // Calculate achievements/badges
+    const totalDone = await get('SELECT COUNT(*) as count FROM user_topic_progress WHERE user_exam_id = ? AND done = 1', [id]);
+    const badgeFirstSteps = (totalDone.count || 0) >= 1;
+    const badgeDeepFocus = (totalDone.count || 0) >= 5;
+    const badgeStreakMaster = streak >= 3;
+
+    const totalMocks = await get('SELECT COUNT(*) as count FROM mock_tests WHERE user_exam_id = ?', [id]);
+    const badgeMockPioneer = (totalMocks.count || 0) >= 1;
+
+    let badgeSubjectExpert = false;
+    const subjects = await query('SELECT id, name FROM exam_subjects WHERE exam_id = (SELECT exam_id FROM user_exams WHERE id = ?)', [id]);
+    for (const sub of subjects) {
+      const totalSubRow = await get('SELECT COUNT(*) as count FROM exam_topic_map WHERE subject_id = ?', [sub.id]);
+      const doneSubRow = await get('SELECT COUNT(*) as count FROM user_topic_progress WHERE user_exam_id = ? AND done = 1 AND topic_id IN (SELECT topic_id FROM exam_topic_map WHERE subject_id = ?)', [id, sub.id]);
+      if (totalSubRow.count > 0 && doneSubRow.count === totalSubRow.count) {
+        badgeSubjectExpert = true;
+        break;
+      }
+    }
+
+    const maxMock = await get('SELECT MAX(total_score * 1.0 / max_score) as max_ratio FROM mock_tests WHERE user_exam_id = ?', [id]);
+    const badgeHighFlyer = maxMock.max_ratio !== null && maxMock.max_ratio >= 0.8;
+
+    const badges = [
+      { id: 'first_steps', name: 'First Steps', desc: 'Completed your first syllabus topic', unlocked: badgeFirstSteps, icon: 'ti-footprint' },
+      { id: 'deep_focus', name: 'Deep Focus', desc: 'Completed 5 syllabus topics', unlocked: badgeDeepFocus, icon: 'ti-brain' },
+      { id: 'streak_master', name: 'Streak Master', desc: 'Maintained a 3-day study streak', unlocked: badgeStreakMaster, icon: 'ti-flame' },
+      { id: 'mock_pioneer', name: 'Mock Pioneer', desc: 'Logged your first mock test score', unlocked: badgeMockPioneer, icon: 'ti-award' },
+      { id: 'subject_expert', name: 'Subject Expert', desc: 'Completed 100% of any subject syllabus', unlocked: badgeSubjectExpert, icon: 'ti-certificate' },
+      { id: 'high_flyer', name: 'High Flyer', desc: 'Scored 80% or higher in a mock test', unlocked: badgeHighFlyer, icon: 'ti-rocket' }
+    ];
+
+    res.json({ streak, badges });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
 // AI SPACE ENDPOINTS (Gemini + Fallback)
 // ----------------------------------------------------
 
