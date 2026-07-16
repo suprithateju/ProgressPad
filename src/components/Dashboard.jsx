@@ -14,10 +14,12 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskSubject, setNewTaskSubject] = useState('');
 
-  // Weekly study commitment states
-  const [weeklyCommitments, setWeeklyCommitments] = useState([]);
-  const [newCommitmentTopicId, setNewCommitmentTopicId] = useState('');
-  const [commitmentHours, setCommitmentHours] = useState(1.0);
+  // Subject-wise Weekly goals & Focus states
+  const [subjectGoals, setSubjectGoals] = useState([]);
+  const [expandedSubjectId, setExpandedSubjectId] = useState(null);
+  const [newSubjectTaskTexts, setNewSubjectTaskTexts] = useState({});
+  const [newSubjectTaskTopics, setNewSubjectTaskTopics] = useState({});
+  const [subjectHourInputs, setSubjectHourInputs] = useState({});
 
   // Per-board filter state: { [subjectId]: { status: 'All', priority: 'All', search: '' } }
   const [boardFilters, setBoardFilters] = useState({});
@@ -268,60 +270,89 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
     }
   };
 
-  const fetchWeeklyCommitments = async () => {
+  const fetchSubjectGoals = async () => {
     try {
-      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/weekly-commitments`, {
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/subject-goals`, {
         headers: getHeaders()
       });
       if (res.ok) {
         const data = await res.json();
-        setWeeklyCommitments(data);
+        setSubjectGoals(data);
+        const hoursMap = {};
+        data.forEach(g => {
+          hoursMap[g.subject_id] = g.weekly_target_hours;
+        });
+        setSubjectHourInputs(prev => ({ ...hoursMap, ...prev }));
       }
     } catch (err) {
-      console.error('Error fetching weekly commitments:', err);
+      console.error('Error fetching subject goals:', err);
     }
   };
 
-  const handleAddCommitment = async (e) => {
-    e.preventDefault();
-    if (!newCommitmentTopicId) return;
-
+  const handleUpdateSubjectGoal = async (subjectId, targetHours, completedHours) => {
     try {
-      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/weekly-commitments`, {
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/subject-goals`, {
         method: 'POST',
         headers: {
           ...getHeaders(),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          topicId: newCommitmentTopicId,
-          targetHours: parseFloat(commitmentHours) || 1.0
+          subjectId,
+          weeklyTargetHours: parseFloat(targetHours),
+          hoursCompleted: parseFloat(completedHours)
         })
       });
       if (res.ok) {
-        setNewCommitmentTopicId('');
-        setCommitmentHours(1.0);
-        fetchWeeklyCommitments();
-      } else {
-        const errData = await res.json();
-        alert(errData.error || 'Failed to add weekly commitment');
+        fetchSubjectGoals();
       }
     } catch (err) {
-      console.error('Error adding weekly commitment:', err);
+      console.error('Error updating subject goal:', err);
     }
   };
 
-  const handleDeleteCommitment = async (cid) => {
+  const handleLogSubjectTime = async (subjectId, hours) => {
     try {
-      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/weekly-commitments/${cid}`, {
-        method: 'DELETE',
-        headers: getHeaders()
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/subject-goals/${subjectId}/log-time`, {
+        method: 'POST',
+        headers: {
+          ...getHeaders(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ hours: parseFloat(hours) })
       });
       if (res.ok) {
-        fetchWeeklyCommitments();
+        fetchSubjectGoals();
       }
     } catch (err) {
-      console.error('Error deleting weekly commitment:', err);
+      console.error('Error logging study hours:', err);
+    }
+  };
+
+  const handleAddSubjectTask = async (e, subjectId, subjectName) => {
+    e.preventDefault();
+    const taskText = newSubjectTaskTexts[subjectId] || '';
+    if (!taskText.trim()) return;
+
+    try {
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/daily-tasks`, {
+        method: 'POST',
+        headers: {
+          ...getHeaders(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          taskText,
+          subjectName
+        })
+      });
+      if (res.ok) {
+        setNewSubjectTaskTexts(prev => ({ ...prev, [subjectId]: '' }));
+        setNewSubjectTaskTopics(prev => ({ ...prev, [subjectId]: '' }));
+        fetchDailyTasks();
+      }
+    } catch (err) {
+      console.error('Error adding subject task:', err);
     }
   };
 
@@ -333,7 +364,7 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
         fetchRevisionDue(),
         fetchNextUp(),
         fetchDailyTasks(),
-        fetchWeeklyCommitments()
+        fetchSubjectGoals()
       ]).finally(() => setLoading(false));
     }
   }, [userExamId, backendUrl]);
@@ -356,7 +387,7 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
         headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ done: nextDone, status: nextStatus })
       });
-      if (res.ok) { fetchSyllabus(); fetchRevisionDue(); fetchNextUp(); fetchWeeklyCommitments(); }
+      if (res.ok) { fetchSyllabus(); fetchRevisionDue(); fetchNextUp(); fetchSubjectGoals(); }
     } catch {}
   };
 
@@ -378,7 +409,7 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
         headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ status: tempStatus, done: tempDone, notes: tempNotes, difficultyRating: tempRating > 0 ? tempRating : undefined })
       });
-      if (res.ok) { setDetailModalOpen(false); fetchSyllabus(); fetchRevisionDue(); fetchNextUp(); fetchWeeklyCommitments(); }
+      if (res.ok) { setDetailModalOpen(false); fetchSyllabus(); fetchRevisionDue(); fetchNextUp(); fetchSubjectGoals(); }
     } catch {} finally { setSaveLoading(false); }
   };
 
@@ -551,194 +582,213 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
           {/* ---- LEFT SIDEBAR ---- */}
           <aside className="ws-sidebar">
 
-            {/* DAILY FOCUS CHECKLIST */}
+            {/* ACTIVE STUDY PLANNER (Unified Daily & Weekly) */}
             <div className="glass-panel ws-sidebar-card" style={{ animation: 'sidebarSlideIn 0.4s ease-out both', animationDelay: '0.02s' }}>
               <div className="ws-sidebar-title">
-                <i className="ti ti-checklist" style={{ color: 'var(--accent)' }}></i>
-                DAILY FOCUS AGENDA
-              </div>
-              
-              <form onSubmit={handleAddDailyTask} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem', marginBottom: '0.75rem' }}>
-                <select 
-                  className="sb-filter-select" 
-                  value="" 
-                  onChange={e => {
-                    const val = e.target.value;
-                    if (!val) return;
-                    let matchedTopic = null;
-                    let matchedSubject = null;
-                    syllabus.forEach(s => {
-                      const t = s.topics.find(top => top.topic_id === val);
-                      if (t) {
-                        matchedTopic = t.name;
-                        matchedSubject = s.name;
-                      }
-                    });
-                    if (matchedTopic) {
-                      setNewTaskText(`Study: ${matchedTopic}`);
-                      setNewTaskSubject(matchedSubject || '');
-                    }
-                  }}
-                  style={{ width: '100%', fontSize: '0.75rem', padding: '0.35rem' }}
-                >
-                  <option value="">-- Select a Syllabus Topic --</option>
-                  {syllabus.map(s => (
-                    <optgroup key={s.id} label={s.name}>
-                      {s.topics.map(t => (
-                        <option key={t.topic_id} value={t.topic_id}>{t.name}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-
-                <input 
-                  type="text" 
-                  className="sb-search" 
-                  placeholder="Or type custom task..." 
-                  value={newTaskText}
-                  onChange={e => setNewTaskText(e.target.value)}
-                  style={{ width: '100%', fontSize: '0.8rem' }}
-                  required
-                />
-                <div style={{ display: 'flex', gap: '0.4rem' }}>
-                  <select 
-                    className="sb-filter-select" 
-                    value={newTaskSubject} 
-                    onChange={e => setNewTaskSubject(e.target.value)}
-                    style={{ flex: 1, minWidth: 0, padding: '0.2rem', fontSize: '0.75rem' }}
-                  >
-                    <option value="">No Subject</option>
-                    {syllabus.map(s => (
-                      <option key={s.id} value={s.name}>{s.name}</option>
-                    ))}
-                  </select>
-                  <button type="submit" className="btn btn-primary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}>
-                    <i className="ti ti-plus"></i> Add
-                  </button>
-                </div>
-              </form>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', maxHeight: '180px', overflowY: 'auto' }}>
-                {dailyTasks.map(t => (
-                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={t.done} 
-                        onChange={() => handleToggleDailyTask(t.id, t.done)}
-                        style={{ cursor: 'pointer' }}
-                      />
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontSize: '0.78rem', textDecoration: t.done ? 'line-through' : 'none', color: t.done ? 'var(--text-tertiary)' : 'var(--text-primary)', transition: 'all 0.15s' }}>
-                          {t.task_text}
-                        </span>
-                        {t.subject_name && (
-                          <span style={{ fontSize: '0.62rem', color: 'var(--accent)', fontWeight: 600 }}>
-                            {t.subject_name}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <button 
-                      type="button" 
-                      onClick={() => handleDeleteDailyTask(t.id)} 
-                      style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0.1rem 0.2rem' }}
-                    >
-                      <i className="ti ti-trash"></i>
-                    </button>
-                  </div>
-                ))}
-                {dailyTasks.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
-                    No daily tasks added yet. Get planning!
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* WEEKLY STUDY COMMITMENTS */}
-            <div className="glass-panel ws-sidebar-card" style={{ animation: 'sidebarSlideIn 0.4s ease-out both', animationDelay: '0.04s', marginTop: '1.25rem' }}>
-              <div className="ws-sidebar-title">
                 <i className="ti ti-calendar" style={{ color: 'var(--accent)' }}></i>
-                WEEKLY STUDY PLANNERS
+                ACTIVE STUDY PLANNER
               </div>
-              
-              {weeklyCommitments.length < 5 && (
-                <form onSubmit={handleAddCommitment} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem', marginBottom: '0.75rem' }}>
-                  <select 
-                    className="sb-filter-select" 
-                    value={newCommitmentTopicId} 
-                    onChange={e => setNewCommitmentTopicId(e.target.value)}
-                    style={{ width: '100%', fontSize: '0.78rem', padding: '0.35rem' }}
-                    required
-                  >
-                    <option value="">-- Commit to a Topic --</option>
-                    {syllabus.map(s => (
-                      <optgroup key={s.id} label={s.name}>
-                        {s.topics
-                          .filter(t => !weeklyCommitments.some(wc => wc.topic_id === t.topic_id))
-                          .map(t => (
-                            <option key={t.topic_id} value={t.topic_id}>{t.name}</option>
-                          ))
-                        }
-                      </optgroup>
-                    ))}
-                  </select>
-                  <div style={{ display: 'flex', gap: '0.4rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 0.4rem', flex: 1 }}>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Hours:</span>
-                      <input 
-                        type="number" 
-                        min="0.5" 
-                        max="10" 
-                        step="0.5" 
-                        value={commitmentHours} 
-                        onChange={e => setCommitmentHours(e.target.value)}
-                        style={{ width: '100%', background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: '0.78rem', padding: '0.2rem 0' }}
-                      />
-                    </div>
-                    <button type="submit" className="btn btn-primary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem' }}>
-                      Commit
-                    </button>
-                  </div>
-                </form>
-              )}
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '0.2rem', marginBottom: '0.75rem' }}>
+                Set weekly hour targets, log study time, and manage daily checklist per subject.
+              </p>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', marginTop: '0.5rem' }}>
-                {weeklyCommitments.map(c => (
-                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
-                      <input 
-                        type="checkbox" 
-                        checked={c.done} 
-                        onChange={() => handleToggleDone(c.topic_id, c.done, c.status)}
-                        style={{ cursor: 'pointer' }}
-                      />
-                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 600, textDecoration: c.done ? 'line-through' : 'none', color: c.done ? 'var(--text-tertiary)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {c.topic_name}
-                        </span>
-                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>
-                          <span>{c.subject_name}</span>
-                          <span>•</span>
-                          <span style={{ color: 'var(--accent)' }}>{c.target_hours} hrs</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {syllabus.map(s => {
+                  const goal = subjectGoals.find(g => g.subject_id === s.id) || { weekly_target_hours: 2.0, hours_completed: 0.0 };
+                  const isExpanded = expandedSubjectId === s.id;
+                  const subjectTasks = dailyTasks.filter(t => t.subject_name === s.name);
+                  const doneTasks = subjectTasks.filter(t => t.done).length;
+                  const pctTasks = subjectTasks.length ? Math.round((doneTasks / subjectTasks.length) * 100) : 0;
+                  const weeklyHoursProgress = goal.weekly_target_hours ? Math.min(100, Math.round((goal.hours_completed / goal.weekly_target_hours) * 100)) : 0;
+
+                  return (
+                    <div 
+                      key={s.id} 
+                      style={{ 
+                        border: `1px solid ${isExpanded ? s.color : 'var(--border-color)'}`, 
+                        borderRadius: '10px', 
+                        background: 'var(--bg-secondary)', 
+                        overflow: 'hidden',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      {/* Subject Header (Accordion Toggle) */}
+                      <div 
+                        onClick={() => setExpandedSubjectId(isExpanded ? null : s.id)}
+                        style={{ 
+                          padding: '0.65rem 0.8rem', 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center', 
+                          cursor: 'pointer',
+                          background: isExpanded ? `${s.color}08` : 'transparent',
+                          borderBottom: isExpanded ? `1px solid ${s.color}20` : 'none'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }}></span>
+                          <span style={{ fontWeight: 700, fontSize: '0.82rem', color: isExpanded ? s.color : 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                            {s.name}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                          <span><strong>{goal.hours_completed.toFixed(1)}</strong>/{goal.weekly_target_hours.toFixed(1)} hrs</span>
+                          <i className={`ti ti-chevron-${isExpanded ? 'up' : 'down'}`} style={{ fontSize: '0.85rem' }}></i>
                         </div>
                       </div>
+
+                      {/* Header Progress Bars */}
+                      {!isExpanded && (
+                        <div style={{ height: '3px', background: 'var(--bg-tertiary)', display: 'flex' }}>
+                          <div style={{ width: `${weeklyHoursProgress}%`, background: s.color, height: '100%' }} title="Weekly study hours target progress" />
+                        </div>
+                      )}
+
+                      {/* Expanded Content */}
+                      {isExpanded && (
+                        <div style={{ padding: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.8rem' }}>
+                          
+                          {/* Weekly Goals Progress Bar */}
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginBottom: '0.25rem', color: 'var(--text-secondary)' }}>
+                              <span>Weekly Hours Progress</span>
+                              <strong>{weeklyHoursProgress}%</strong>
+                            </div>
+                            <div style={{ height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
+                              <div style={{ width: `${weeklyHoursProgress}%`, height: '100%', background: s.color, borderRadius: '3px' }}></div>
+                            </div>
+                          </div>
+
+                          {/* Hours Controls (Adjust target + Log time) */}
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <div style={{ flex: 1 }}>
+                              <label style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: '2px' }}>Weekly Target (Hrs)</label>
+                              <input 
+                                type="number" 
+                                min="0.5" 
+                                max="40" 
+                                step="0.5"
+                                value={subjectHourInputs[s.id] !== undefined ? subjectHourInputs[s.id] : goal.weekly_target_hours}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setSubjectHourInputs(prev => ({ ...prev, [s.id]: val }));
+                                  handleUpdateSubjectGoal(s.id, val, goal.hours_completed);
+                                }}
+                                style={{ width: '100%', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontSize: '0.78rem', padding: '0.2rem 0.4rem', borderRadius: '4px' }}
+                              />
+                            </div>
+                            <div style={{ flex: 1.2 }}>
+                              <label style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: '2px' }}>Quick Log Time</label>
+                              <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                <button 
+                                  onClick={() => handleLogSubjectTime(s.id, 0.5)}
+                                  className="btn btn-secondary" 
+                                  style={{ padding: '0.2rem 0.4rem', fontSize: '0.7rem', flex: 1, minWidth: 0 }}
+                                >
+                                  +0.5h
+                                </button>
+                                <button 
+                                  onClick={() => handleLogSubjectTime(s.id, 1.0)}
+                                  className="btn btn-secondary" 
+                                  style={{ padding: '0.2rem 0.4rem', fontSize: '0.7rem', flex: 1, minWidth: 0 }}
+                                >
+                                  +1.0h
+                                </button>
+                                <button 
+                                  onClick={() => handleLogSubjectTime(s.id, -0.5)}
+                                  className="btn btn-secondary" 
+                                  style={{ padding: '0.2rem 0.4rem', fontSize: '0.7rem', flex: 1, minWidth: 0, borderColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}
+                                  title="Reduce 0.5 hours"
+                                >
+                                  -0.5
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Subject-specific Daily task builder */}
+                          <form onSubmit={e => handleAddSubjectTask(e, s.id, s.name)} style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            <label style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Add Task for {s.name}</label>
+                            
+                            <select 
+                              className="sb-filter-select" 
+                              value={newSubjectTaskTopics[s.id] || ''} 
+                              onChange={e => {
+                                const val = e.target.value;
+                                setNewSubjectTaskTopics(prev => ({ ...prev, [s.id]: val }));
+                                if (val) {
+                                  const topic = s.topics.find(t => t.topic_id === val);
+                                  if (topic) {
+                                    setNewSubjectTaskTexts(prev => ({ ...prev, [s.id]: `Study: ${topic.name}` }));
+                                  }
+                                }
+                              }}
+                              style={{ width: '100%', fontSize: '0.74rem', padding: '0.25rem' }}
+                            >
+                              <option value="">-- Choose Syllabus Topic --</option>
+                              {s.topics.map(t => (
+                                <option key={t.topic_id} value={t.topic_id}>{t.name}</option>
+                              ))}
+                            </select>
+
+                            <div style={{ display: 'flex', gap: '0.3rem' }}>
+                              <input 
+                                type="text"
+                                className="sb-search" 
+                                placeholder="Or type custom task..."
+                                value={newSubjectTaskTexts[s.id] || ''}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setNewSubjectTaskTexts(prev => ({ ...prev, [s.id]: val }));
+                                }}
+                                style={{ flex: 1, fontSize: '0.78rem', minWidth: 0 }}
+                                required
+                              />
+                              <button type="submit" className="btn btn-primary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
+                                Add
+                              </button>
+                            </div>
+                          </form>
+
+                          {/* Subject daily checklist */}
+                          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block' }}>Daily Task List ({doneTasks}/{subjectTasks.length})</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '120px', overflowY: 'auto' }}>
+                              {subjectTasks.map(t => (
+                                <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.35rem 0.45rem', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                                    <input 
+                                      type="checkbox" 
+                                      checked={t.done} 
+                                      onChange={() => handleToggleDailyTask(t.id, t.done)}
+                                      style={{ cursor: 'pointer' }}
+                                    />
+                                    <span style={{ fontSize: '0.74rem', textDecoration: t.done ? 'line-through' : 'none', color: t.done ? 'var(--text-tertiary)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {t.task_text}
+                                    </span>
+                                  </div>
+                                  <button 
+                                    type="button" 
+                                    onClick={() => handleDeleteDailyTask(t.id)}
+                                    style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0.1rem' }}
+                                  >
+                                    <i className="ti ti-trash" style={{ fontSize: '0.75rem' }}></i>
+                                  </button>
+                                </div>
+                              ))}
+                              {subjectTasks.length === 0 && (
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '0.5rem 0' }}>
+                                  No tasks added for today.
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                        </div>
+                      )}
                     </div>
-                    <button 
-                      type="button" 
-                      onClick={() => handleDeleteCommitment(c.id)} 
-                      style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0.1rem 0.2rem' }}
-                    >
-                      <i className="ti ti-trash"></i>
-                    </button>
-                  </div>
-                ))}
-                {weeklyCommitments.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
-                    No weekly commitments yet. Add up to 5 topics to prioritize this week!
-                  </div>
-                )}
+                  );
+                })}
               </div>
             </div>
 

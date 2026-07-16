@@ -254,16 +254,18 @@ export const initDB = async () => {
     );
   `);
 
-  // 10. Weekly Study Commitments
+  // 10. Subject Goals (Weekly Target Hours & Completed Hours per Subject)
   await run(`
-    CREATE TABLE IF NOT EXISTS weekly_commitments (
+    CREATE TABLE IF NOT EXISTS subject_goals (
       id TEXT PRIMARY KEY,
       user_exam_id TEXT NOT NULL,
-      topic_id TEXT NOT NULL,
-      target_hours REAL DEFAULT 1.0,
+      subject_id TEXT NOT NULL,
+      weekly_target_hours REAL DEFAULT 2.0,
+      hours_completed REAL DEFAULT 0.0,
       created_at TEXT NOT NULL,
       FOREIGN KEY(user_exam_id) REFERENCES user_exams(id) ON DELETE CASCADE,
-      FOREIGN KEY(topic_id) REFERENCES topics(id) ON DELETE CASCADE
+      FOREIGN KEY(subject_id) REFERENCES exam_subjects(id) ON DELETE CASCADE,
+      UNIQUE(user_exam_id, subject_id)
     );
   `);
 
