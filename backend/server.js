@@ -3,6 +3,7 @@ import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
 import { initDB, query, get, run } from './database.js';
 import { seedDatabase } from './seed.js';
+import { saveUserCloudBackup, restoreUserCloudBackup } from './cloud_backup.js';
 import {
   explainTopic,
   generateMCQs,
@@ -160,16 +161,36 @@ app.get('/api/exams/:slug/syllabus', async (req, res) => {
 // USER EXAM ENROLLMENT MANAGEMENT
 // ----------------------------------------------------
 
+// Get database status type
+app.get('/api/db-status', (req, res) => {
+  res.json({ dbType: process.env.DATABASE_URL ? 'PostgreSQL' : 'SQLite' });
+});
+
 // Get all enrolled exams the user is tracking
 app.get('/api/users/me/exams', async (req, res) => {
   try {
-    const enrolled = await query(`
+    let enrolled = await query(`
       SELECT ue.*, e.name as exam_name, e.slug as exam_slug, e.full_name as exam_full_name, e.conducting_body, e.safe_cutoff, c.label as category_label, c.color_ramp as category_color_ramp
       FROM user_exams ue
       JOIN exams e ON ue.exam_id = e.id
       JOIN exam_categories c ON e.category_id = c.id
       WHERE ue.user_id = ?
     `, [req.userId]);
+
+    // If user is logged in and has no records, try restoring from cloud backup
+    if (enrolled.length === 0 && req.userId && req.userId !== '1') {
+      const restored = await restoreUserCloudBackup(req.userId);
+      if (restored) {
+        // Query again after restore
+        enrolled = await query(`
+          SELECT ue.*, e.name as exam_name, e.slug as exam_slug, e.full_name as exam_full_name, e.conducting_body, e.safe_cutoff, c.label as category_label, c.color_ramp as category_color_ramp
+          FROM user_exams ue
+          JOIN exams e ON ue.exam_id = e.id
+          JOIN exam_categories c ON e.category_id = c.id
+          WHERE ue.user_id = ?
+        `, [req.userId]);
+      }
+    }
 
     const result = [];
 
@@ -264,6 +285,7 @@ app.post('/api/users/me/exams', async (req, res) => {
     }
 
     res.status(201).json({ message: 'Enrolled successfully', userExamId });
+    saveUserCloudBackup(req.userId);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -328,6 +350,7 @@ app.patch('/api/users/me/exams/:id', async (req, res) => {
     }
 
     res.json({ message: 'Update successful' });
+    saveUserCloudBackup(req.userId);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -345,6 +368,7 @@ app.patch('/api/users/me/exams/:id/primary', async (req, res) => {
     }
 
     res.json({ message: 'Primary exam updated successfully' });
+    saveUserCloudBackup(req.userId);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -370,6 +394,7 @@ app.delete('/api/users/me/exams/:id', async (req, res) => {
     }
 
     res.json({ message: 'Exam enrollment deleted successfully' });
+    saveUserCloudBackup(req.userId);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -767,6 +792,7 @@ app.patch('/api/user-exams/:id/topics/:tid', async (req, res) => {
         difficultyRating: nextDiffRating
       }
     });
+    saveUserCloudBackup(req.userId);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -855,6 +881,7 @@ app.post('/api/user-exams/:id/topics/bulk', async (req, res) => {
     }
 
     res.json({ message: `Bulk updated ${topicIds.length} topics successfully.` });
+    saveUserCloudBackup(req.userId);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -906,6 +933,7 @@ app.post('/api/user-exams/:id/topics/custom', async (req, res) => {
     `, [progressId, req.userId, userExamId, topicId]);
 
     res.status(201).json({ message: 'Custom topic added successfully', topicId });
+    saveUserCloudBackup(req.userId);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1182,6 +1210,7 @@ app.post('/api/user-exams/:id/mocks', async (req, res) => {
     ]);
 
     res.status(201).json({ message: 'Mock test logged successfully', mockId, totalScore });
+    saveUserCloudBackup(req.userId);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1195,6 +1224,7 @@ app.delete('/api/user-exams/:id/mocks/:mid', async (req, res) => {
       return res.status(404).json({ error: 'Mock test not found' });
     }
     res.json({ message: 'Mock test deleted successfully' });
+    saveUserCloudBackup(req.userId);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -35,6 +35,23 @@ export default function App() {
   const [mobileTab, setMobileTab] = useState('syllabus'); // 'progress', 'syllabus', 'mocks'
 
   const [loading, setLoading] = useState(true);
+  const [dbStatus, setDbStatus] = useState('SQLite');
+  const [dbModalOpen, setDbModalOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchDbStatus = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/db-status`);
+        if (res.ok) {
+          const data = await res.json();
+          setDbStatus(data.dbType);
+        }
+      } catch (err) {
+        console.error('Failed to fetch DB status:', err);
+      }
+    };
+    fetchDbStatus();
+  }, []);
 
   // Load user's enrolled exams
   const fetchEnrolledExams = async (selectExamId = null) => {
@@ -282,6 +299,23 @@ export default function App() {
             <span>Daily Goal: <strong>{activeExam.daily_goal_hrs || 2.0} hrs</strong></span>
           </div>
         )}
+
+        {dbStatus && (
+          <div 
+            className="user-badge" 
+            style={{ 
+              cursor: 'pointer', 
+              background: dbStatus === 'PostgreSQL' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+              border: `1px solid ${dbStatus === 'PostgreSQL' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}` 
+            }}
+            onClick={() => setDbModalOpen(true)}
+          >
+            <i className={`ti ${dbStatus === 'PostgreSQL' ? 'ti-database-check' : 'ti-database-exclamation'}`} style={{ color: dbStatus === 'PostgreSQL' ? '#10b981' : '#f59e0b' }}></i>
+            <span style={{ color: dbStatus === 'PostgreSQL' ? '#10b981' : '#f59e0b', fontWeight: 600 }}>
+              {dbStatus === 'PostgreSQL' ? 'Cloud Sync Active' : 'SQLite (Temporary)'}
+            </span>
+          </div>
+        )}
       </header>
 
       {/* Main Content Area */}
@@ -361,6 +395,76 @@ export default function App() {
         </button>
       </div>
 
+      <DatabaseModal isOpen={dbModalOpen} onClose={() => setDbModalOpen(false)} dbType={dbStatus} />
+
+    </div>
+  );
+}
+
+// Database Modal setup helper component
+function DatabaseModal({ isOpen, onClose, dbType }) {
+  if (!isOpen) return null;
+  return (
+    <div className="modal-overlay" style={{ zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="modal-content glass-panel" style={{ maxWidth: '520px', width: '90%', margin: '0 auto' }}>
+        <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+          <h3 style={{ fontFamily: 'var(--font-display)', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+            <i className={`ti ${dbType === 'PostgreSQL' ? 'ti-database-check' : 'ti-database-exclamation'}`} style={{ color: dbType === 'PostgreSQL' ? '#10b981' : '#f59e0b' }}></i>
+            Database Storage Status
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.25rem' }}>
+            <i className="ti ti-x"></i>
+          </button>
+        </div>
+        <div className="modal-body" style={{ fontSize: '0.88rem', lineHeight: '1.6', color: 'var(--text-secondary)' }}>
+          {dbType === 'PostgreSQL' ? (
+            <div>
+              <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', padding: '1rem', borderRadius: '8px', marginBottom: '1.25rem' }}>
+                <strong style={{ color: '#10b981', display: 'block', marginBottom: '0.25rem' }}>✓ Permanent Cloud Storage Active</strong>
+                Your ProgressPad account is connected to a cloud PostgreSQL database. Your progress, custom topics, and mock tests are safely stored forever and will be available on all your devices.
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', padding: '1rem', borderRadius: '8px', marginBottom: '1.25rem' }}>
+                <strong style={{ color: '#f59e0b', display: 'block', marginBottom: '0.25rem' }}>⚠️ Temporary Database Active (SQLite)</strong>
+                Because this application is hosted on Render's free tier, the local database file is reset every time the server restarts or goes to sleep (after 15 minutes of inactivity).
+                <br /><br />
+                <em>Note: We have enabled automated backend cloud syncing to save your progress, but for complete multi-device sync, we highly recommend linking a free cloud database.</em>
+              </div>
+              <h4 style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Link a Free Permanent Database in 3 Steps:</h4>
+              <ol style={{ paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
+                <li>
+                  <strong>Create a Free Database</strong>
+                  <br />
+                  Sign up at <a href="https://supabase.com" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Supabase.com</a> or <a href="https://neon.tech" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Neon.tech</a> and create a new free PostgreSQL project.
+                </li>
+                <li>
+                  <strong>Copy the Connection URL</strong>
+                  <br />
+                  From your database settings dashboard, copy the <strong>Connection String</strong> URL (it looks like: <code>postgres://user:password@host/db</code>).
+                </li>
+                <li>
+                  <strong>Add to Render Settings</strong>
+                  <br />
+                  Go to your <strong>Render Dashboard</strong>, select your ProgressPad backend service, navigate to <strong>Environment</strong>, and add a new environment variable:
+                  <div style={{ margin: '0.5rem 0' }}>
+                    <code style={{ background: 'rgba(255,255,255,0.05)', padding: '0.25rem 0.5rem', borderRadius: '4px', display: 'block', wordBreak: 'break-all' }}>
+                      Key: <strong>DATABASE_URL</strong>
+                      <br />
+                      Value: <strong>[your-copied-connection-string]</strong>
+                    </code>
+                  </div>
+                  Save changes. Render will automatically redeploy the backend and use the permanent cloud database!
+                </li>
+              </ol>
+            </div>
+          )}
+        </div>
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+          <button className="btn btn-primary" onClick={onClose}>Close</button>
+        </div>
+      </div>
     </div>
   );
 }
