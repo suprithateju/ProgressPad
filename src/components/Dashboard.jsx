@@ -14,6 +14,11 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskSubject, setNewTaskSubject] = useState('');
 
+  // Weekly study commitment states
+  const [weeklyCommitments, setWeeklyCommitments] = useState([]);
+  const [newCommitmentTopicId, setNewCommitmentTopicId] = useState('');
+  const [commitmentHours, setCommitmentHours] = useState(1.0);
+
   // Per-board filter state: { [subjectId]: { status: 'All', priority: 'All', search: '' } }
   const [boardFilters, setBoardFilters] = useState({});
 
@@ -263,10 +268,73 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
     }
   };
 
+  const fetchWeeklyCommitments = async () => {
+    try {
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/weekly-commitments`, {
+        headers: getHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setWeeklyCommitments(data);
+      }
+    } catch (err) {
+      console.error('Error fetching weekly commitments:', err);
+    }
+  };
+
+  const handleAddCommitment = async (e) => {
+    e.preventDefault();
+    if (!newCommitmentTopicId) return;
+
+    try {
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/weekly-commitments`, {
+        method: 'POST',
+        headers: {
+          ...getHeaders(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          topicId: newCommitmentTopicId,
+          targetHours: parseFloat(commitmentHours) || 1.0
+        })
+      });
+      if (res.ok) {
+        setNewCommitmentTopicId('');
+        setCommitmentHours(1.0);
+        fetchWeeklyCommitments();
+      } else {
+        const errData = await res.json();
+        alert(errData.error || 'Failed to add weekly commitment');
+      }
+    } catch (err) {
+      console.error('Error adding weekly commitment:', err);
+    }
+  };
+
+  const handleDeleteCommitment = async (cid) => {
+    try {
+      const res = await fetch(`${backendUrl}/api/user-exams/${userExamId}/weekly-commitments/${cid}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+      if (res.ok) {
+        fetchWeeklyCommitments();
+      }
+    } catch (err) {
+      console.error('Error deleting weekly commitment:', err);
+    }
+  };
+
   useEffect(() => {
     if (userExamId) {
       setLoading(true);
-      Promise.all([fetchSyllabus(), fetchRevisionDue(), fetchNextUp(), fetchDailyTasks()]).finally(() => setLoading(false));
+      Promise.all([
+        fetchSyllabus(),
+        fetchRevisionDue(),
+        fetchNextUp(),
+        fetchDailyTasks(),
+        fetchWeeklyCommitments()
+      ]).finally(() => setLoading(false));
     }
   }, [userExamId, backendUrl]);
 
@@ -288,7 +356,7 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
         headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ done: nextDone, status: nextStatus })
       });
-      if (res.ok) { fetchSyllabus(); fetchRevisionDue(); fetchNextUp(); }
+      if (res.ok) { fetchSyllabus(); fetchRevisionDue(); fetchNextUp(); fetchWeeklyCommitments(); }
     } catch {}
   };
 
@@ -310,7 +378,7 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
         headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ status: tempStatus, done: tempDone, notes: tempNotes, difficultyRating: tempRating > 0 ? tempRating : undefined })
       });
-      if (res.ok) { setDetailModalOpen(false); fetchSyllabus(); fetchRevisionDue(); fetchNextUp(); }
+      if (res.ok) { setDetailModalOpen(false); fetchSyllabus(); fetchRevisionDue(); fetchNextUp(); fetchWeeklyCommitments(); }
     } catch {} finally { setSaveLoading(false); }
   };
 
@@ -443,6 +511,39 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
         </div>
       </div>
 
+      {/* Spaced Repetition Due Alert Banner */}
+      {revisionDue.length > 0 && (
+        <div 
+          style={{ 
+            background: 'rgba(245, 158, 11, 0.1)', 
+            border: '1px solid rgba(245, 158, 11, 0.2)', 
+            padding: '0.85rem 1.25rem', 
+            borderRadius: '10px', 
+            marginBottom: '1.5rem', 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            flexWrap: 'wrap', 
+            gap: '0.5rem',
+            animation: 'pulse 2s infinite'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.88rem', color: '#f59e0b' }}>
+            <i className="ti ti-alert-triangle" style={{ fontSize: '1.2rem' }}></i>
+            <span>
+              <strong>Spaced Repetition Alert:</strong> You have <strong>{revisionDue.length}</strong> topic(s) due for revision to maintain your study streak & build long-term memory.
+            </span>
+          </div>
+          <button 
+            className="btn btn-primary" 
+            style={{ padding: '0.35rem 0.85rem', fontSize: '0.78rem', background: '#f59e0b', borderColor: '#f59e0b', color: '#1e1b4b', border: 'none' }}
+            onClick={() => setViewMode('srs')}
+          >
+            Review Now <i className="ti ti-arrow-right"></i>
+          </button>
+        </div>
+      )}
+
       {viewMode === 'board' ? (
         /* ===== WORKSPACE LAYOUT: LEFT SIDEBAR + RIGHT BOARDS GRID ===== */
         <div className={`workspace-layout mobile-view-${mobileView}`}>
@@ -518,6 +619,92 @@ export default function Dashboard({ userExamId, backendUrl, activeExamDetails, o
                 {dailyTasks.length === 0 && (
                   <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
                     No daily tasks added yet. Get planning!
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* WEEKLY STUDY COMMITMENTS */}
+            <div className="glass-panel ws-sidebar-card" style={{ animation: 'sidebarSlideIn 0.4s ease-out both', animationDelay: '0.04s', marginTop: '1.25rem' }}>
+              <div className="ws-sidebar-title">
+                <i className="ti ti-calendar" style={{ color: 'var(--accent)' }}></i>
+                WEEKLY STUDY PLANNERS
+              </div>
+              
+              {weeklyCommitments.length < 5 && (
+                <form onSubmit={handleAddCommitment} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem', marginBottom: '0.75rem' }}>
+                  <select 
+                    className="sb-filter-select" 
+                    value={newCommitmentTopicId} 
+                    onChange={e => setNewCommitmentTopicId(e.target.value)}
+                    style={{ width: '100%', fontSize: '0.78rem', padding: '0.35rem' }}
+                    required
+                  >
+                    <option value="">-- Commit to a Topic --</option>
+                    {syllabus.map(s => (
+                      <optgroup key={s.id} label={s.name}>
+                        {s.topics
+                          .filter(t => !weeklyCommitments.some(wc => wc.topic_id === t.topic_id))
+                          .map(t => (
+                            <option key={t.topic_id} value={t.topic_id}>{t.name}</option>
+                          ))
+                        }
+                      </optgroup>
+                    ))}
+                  </select>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0 0.4rem', flex: 1 }}>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Hours:</span>
+                      <input 
+                        type="number" 
+                        min="0.5" 
+                        max="10" 
+                        step="0.5" 
+                        value={commitmentHours} 
+                        onChange={e => setCommitmentHours(e.target.value)}
+                        style={{ width: '100%', background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: '0.78rem', padding: '0.2rem 0' }}
+                      />
+                    </div>
+                    <button type="submit" className="btn btn-primary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem' }}>
+                      Commit
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', marginTop: '0.5rem' }}>
+                {weeklyCommitments.map(c => (
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
+                      <input 
+                        type="checkbox" 
+                        checked={c.done} 
+                        onChange={() => handleToggleDone(c.topic_id, c.done, c.status)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 600, textDecoration: c.done ? 'line-through' : 'none', color: c.done ? 'var(--text-tertiary)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {c.topic_name}
+                        </span>
+                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>
+                          <span>{c.subject_name}</span>
+                          <span>•</span>
+                          <span style={{ color: 'var(--accent)' }}>{c.target_hours} hrs</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => handleDeleteCommitment(c.id)} 
+                      style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0.1rem 0.2rem' }}
+                    >
+                      <i className="ti ti-trash"></i>
+                    </button>
+                  </div>
+                ))}
+                {weeklyCommitments.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
+                    No weekly commitments yet. Add up to 5 topics to prioritize this week!
                   </div>
                 )}
               </div>

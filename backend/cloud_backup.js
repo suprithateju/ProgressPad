@@ -82,13 +82,22 @@ export const saveUserCloudBackup = async (email) => {
         createdAt: t.created_at
       }));
 
+      // Get weekly commitments
+      const commitmentsRows = await query('SELECT * FROM weekly_commitments WHERE user_exam_id = ?', [ue.id]);
+      const weeklyCommitments = commitmentsRows.map(c => ({
+        topicId: c.topic_id,
+        targetHours: c.target_hours,
+        createdAt: c.created_at
+      }));
+
       enrolledExams[examId] = {
         examId,
         dailyGoalHrs: ue.daily_goal_hrs,
         progress,
         customTopics,
         mocks,
-        dailyTasks
+        dailyTasks,
+        weeklyCommitments
       };
     }
 
@@ -300,6 +309,19 @@ export const restoreUserCloudBackup = async (email) => {
               INSERT INTO daily_tasks (id, user_exam_id, task_text, subject_name, done, created_at)
               VALUES (?, ?, ?, ?, ?, ?)
             `, [uuidv4(), userExamId, t.taskText, t.subjectName || null, t.done ? 1 : 0, t.createdAt]);
+          }
+        }
+      }
+
+      // 6. Restore Weekly Commitments
+      if (Array.isArray(backupData.weeklyCommitments)) {
+        for (const c of backupData.weeklyCommitments) {
+          let existingCommitment = await get('SELECT id FROM weekly_commitments WHERE user_exam_id = ? AND topic_id = ?', [userExamId, c.topicId]);
+          if (!existingCommitment) {
+            await run(`
+              INSERT INTO weekly_commitments (id, user_exam_id, topic_id, target_hours, created_at)
+              VALUES (?, ?, ?, ?, ?)
+            `, [uuidv4(), userExamId, c.topicId, c.targetHours || 1.0, c.createdAt]);
           }
         }
       }

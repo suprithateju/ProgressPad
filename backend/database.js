@@ -254,6 +254,19 @@ export const initDB = async () => {
     );
   `);
 
+  // 10. Weekly Study Commitments
+  await run(`
+    CREATE TABLE IF NOT EXISTS weekly_commitments (
+      id TEXT PRIMARY KEY,
+      user_exam_id TEXT NOT NULL,
+      topic_id TEXT NOT NULL,
+      target_hours REAL DEFAULT 1.0,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(user_exam_id) REFERENCES user_exams(id) ON DELETE CASCADE,
+      FOREIGN KEY(topic_id) REFERENCES topics(id) ON DELETE CASCADE
+    );
+  `);
+
   console.log('Database schema checked/initialized.');
 };
 

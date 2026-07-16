@@ -1300,6 +1300,81 @@ app.delete('/api/user-exams/:id/daily-tasks/:tid', async (req, res) => {
 });
 
 // ----------------------------------------------------
+// WEEKLY STUDY COMMITMENTS ENDPOINTS
+// ----------------------------------------------------
+
+app.get('/api/user-exams/:id/weekly-commitments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const commitments = await query(`
+      SELECT c.id, c.user_exam_id, c.topic_id, c.target_hours, c.created_at,
+             t.topic as topic_name, t.section, s.name as subject_name,
+             p.done, p.status
+      FROM weekly_commitments c
+      JOIN topics t ON c.topic_id = t.id
+      JOIN exam_topic_map m ON m.topic_id = t.id AND m.exam_id = (SELECT exam_id FROM user_exams WHERE id = ?)
+      JOIN exam_subjects s ON m.subject_id = s.id
+      LEFT JOIN user_topic_progress p ON p.topic_id = t.id AND p.user_exam_id = c.user_exam_id
+      WHERE c.user_exam_id = ?
+      ORDER BY c.created_at ASC
+    `, [id, id]);
+
+    const parsed = commitments.map(c => ({
+      ...c,
+      done: !!c.done
+    }));
+    res.json(parsed);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/user-exams/:id/weekly-commitments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { topicId, targetHours } = req.body;
+    if (!topicId) {
+      return res.status(400).json({ error: 'topicId is required' });
+    }
+
+    // Check count of active commitments (cap at 5)
+    const activeCount = await get('SELECT COUNT(*) as count FROM weekly_commitments WHERE user_exam_id = ?', [id]);
+    if (activeCount.count >= 5) {
+      return res.status(400).json({ error: 'You can only commit to 5 topics maximum per week to maintain deep focus.' });
+    }
+
+    // Check if topic is already committed
+    const existing = await get('SELECT id FROM weekly_commitments WHERE user_exam_id = ? AND topic_id = ?', [id, topicId]);
+    if (existing) {
+      return res.status(400).json({ error: 'Topic is already in your weekly commitments.' });
+    }
+
+    const commitmentId = uuidv4();
+    const createdAt = new Date().toISOString();
+    await run(`
+      INSERT INTO weekly_commitments (id, user_exam_id, topic_id, target_hours, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `, [commitmentId, id, topicId, targetHours || 1.0, createdAt]);
+
+    res.status(201).json({ message: 'Topic added to weekly commitments', commitmentId });
+    saveUserCloudBackup(req.userId);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/user-exams/:id/weekly-commitments/:cid', async (req, res) => {
+  try {
+    const { cid } = req.params;
+    await run('DELETE FROM weekly_commitments WHERE id = ?', [cid]);
+    res.json({ message: 'Weekly commitment removed successfully' });
+    saveUserCloudBackup(req.userId);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
 // GAMIFICATION & STREAKS ENDPOINT
 // ----------------------------------------------------
 
