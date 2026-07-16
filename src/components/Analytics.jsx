@@ -385,10 +385,6 @@ export default function Analytics({ userExamId, backendUrl, activeExamDetails })
                   )}
                 </div>
                 
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                  Target Date: <strong style={{ color: 'var(--text-primary)' }}>{ex.targetDate || 'Not Set'}</strong>
-                </div>
-
                 {/* Progress bar */}
                 <div style={{ marginTop: '0.5rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '0.2rem' }}>

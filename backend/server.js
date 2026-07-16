@@ -375,6 +375,179 @@ app.delete('/api/users/me/exams/:id', async (req, res) => {
   }
 });
 
+// Sync and restore database from local storage backup (resolves ephemeral sqlite database resets)
+app.post('/api/users/me/sync-restore', async (req, res) => {
+  try {
+    const { enrolledExams } = req.body;
+    if (!enrolledExams || typeof enrolledExams !== 'object') {
+      return res.status(400).json({ error: 'enrolledExams object is required' });
+    }
+
+    const email = req.userId;
+
+    for (const [examId, backupData] of Object.entries(enrolledExams)) {
+      // 1. Check if user is already enrolled in this exam
+      let ue = await get('SELECT id FROM user_exams WHERE user_id = ? AND exam_id = ?', [email, examId]);
+      let userExamId;
+
+      if (!ue) {
+        // Create enrollment
+        userExamId = uuidv4();
+        const enrolledAt = new Date().toISOString();
+        const primaryCheck = await get('SELECT COUNT(*) as count FROM user_exams WHERE user_id = ?', [email]);
+        const isPrimary = primaryCheck.count === 0 ? 1 : 0;
+
+        await run(`
+          INSERT INTO user_exams (id, user_id, exam_id, target_date, is_primary, enrolled_at, daily_goal_hrs)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [userExamId, email, examId, '', isPrimary, enrolledAt, backupData.dailyGoalHrs || 2.0]);
+
+        // Seed default topics into user_topic_progress
+        const examTopics = await query('SELECT topic_id FROM exam_topic_map WHERE exam_id = ?', [examId]);
+        for (const et of examTopics) {
+          await run(`
+            INSERT OR IGNORE INTO user_topic_progress (id, user_id, user_exam_id, topic_id, status, done, ease_factor)
+            VALUES (?, ?, ?, ?, 'Not Started', 0, 2.5)
+          `, [uuidv4(), email, userExamId, et.topic_id]);
+        }
+      } else {
+        userExamId = ue.id;
+        // Update daily goal
+        await run('UPDATE user_exams SET daily_goal_hrs = ? WHERE id = ?', [backupData.dailyGoalHrs || 2.0, userExamId]);
+      }
+
+      // 2. Restore Custom Topics
+      if (Array.isArray(backupData.customTopics)) {
+        for (const ct of backupData.customTopics) {
+          const subject = await get('SELECT shared_pool_key, name FROM exam_subjects WHERE id = ?', [ct.subjectId]);
+          if (!subject) continue;
+
+          const poolKey = subject.shared_pool_key || 'custom_pool';
+          
+          let topicRow = await get('SELECT id FROM topics WHERE pool_key = ? AND section = ? AND topic = ?', [poolKey, ct.section || 'Custom Topics', ct.topic]);
+          let topicId = topicRow ? topicRow.id : uuidv4();
+
+          if (!topicRow) {
+            await run(`
+              INSERT INTO topics (id, pool_key, subject_name, section, topic, is_template, difficulty, avg_weightage)
+              VALUES (?, ?, ?, ?, ?, 0, ?, 0)
+            `, [topicId, poolKey, subject.name, ct.section || 'Custom Topics', ct.topic, ct.difficulty || 'medium']);
+          }
+
+          let mapRow = await get('SELECT id FROM exam_topic_map WHERE exam_id = ? AND subject_id = ? AND topic_id = ?', [examId, ct.subjectId, topicId]);
+          if (!mapRow) {
+            const countMap = await get('SELECT COUNT(*) as count FROM exam_topic_map WHERE exam_id = ? AND subject_id = ?', [examId, ct.subjectId]);
+            const nextSort = (countMap.count || 0) + 1;
+            await run(`
+              INSERT INTO exam_topic_map (id, exam_id, subject_id, topic_id, priority, recommended_resource, resource_chapter, sort_order, is_optional)
+              VALUES (?, ?, ?, ?, ?, ?, '', ?, 0)
+            `, [uuidv4(), examId, ct.subjectId, topicId, ct.priority || 'Medium', ct.recommendedResource || '', nextSort]);
+          }
+
+          let progressRow = await get('SELECT id FROM user_topic_progress WHERE user_exam_id = ? AND topic_id = ?', [userExamId, topicId]);
+          if (!progressRow) {
+            await run(`
+              INSERT INTO user_topic_progress (id, user_id, user_exam_id, topic_id, status, done, ease_factor, notes, done_at, next_review_at, difficulty_rating)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [uuidv4(), email, userExamId, topicId, ct.status || 'Not Started', ct.done ? 1 : 0, 2.5, ct.notes || '', ct.done_at || null, ct.next_review_at || null, ct.difficulty_rating || null]);
+          } else {
+            await run(`
+              UPDATE user_topic_progress SET
+                status = ?, done = ?, notes = ?, done_at = ?, next_review_at = ?, difficulty_rating = ?
+              WHERE id = ?
+            `, [ct.status || 'Not Started', ct.done ? 1 : 0, ct.notes || '', ct.done_at || null, ct.next_review_at || null, ct.difficulty_rating || null, progressRow.id]);
+          }
+        }
+      }
+
+      // 3. Restore standard progress updates
+      if (backupData.progress && typeof backupData.progress === 'object') {
+        for (const [topicName, p] of Object.entries(backupData.progress)) {
+          let topicRow = await get('SELECT id FROM topics WHERE topic = ?', [topicName]);
+
+          if (topicRow) {
+            const topicId = topicRow.id;
+            let progressRow = await get('SELECT id FROM user_topic_progress WHERE user_exam_id = ? AND topic_id = ?', [userExamId, topicId]);
+            
+            if (progressRow) {
+              await run(`
+                UPDATE user_topic_progress SET
+                  status = ?,
+                  done = ?,
+                  notes = ?,
+                  done_at = ?,
+                  ease_factor = ?,
+                  next_review_at = ?,
+                  difficulty_rating = ?
+                WHERE id = ?
+              `, [
+                p.status || 'Not Started',
+                p.done ? 1 : 0,
+                p.notes || '',
+                p.done_at || null,
+                p.ease_factor || 2.5,
+                p.next_review_at || null,
+                p.difficulty_rating || null,
+                progressRow.id
+              ]);
+            } else {
+              await run(`
+                INSERT INTO user_topic_progress (id, user_id, user_exam_id, topic_id, status, done, ease_factor, notes, done_at, next_review_at, difficulty_rating)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `, [
+                uuidv4(),
+                email,
+                userExamId,
+                topicId,
+                p.status || 'Not Started',
+                p.done ? 1 : 0,
+                p.ease_factor || 2.5,
+                p.notes || '',
+                p.done_at || null,
+                p.next_review_at || null,
+                p.difficulty_rating || null
+              ]);
+            }
+          }
+        }
+      }
+
+      // 4. Restore Mock Tests
+      if (Array.isArray(backupData.mocks)) {
+        for (const m of backupData.mocks) {
+          let existingMock = await get('SELECT id FROM mock_tests WHERE user_exam_id = ? AND name = ? AND test_date = ?', [userExamId, m.name, m.testDate]);
+          if (!existingMock) {
+            let totalScore = 0;
+            if (m.sectionScores) {
+              Object.values(m.sectionScores).forEach(val => {
+                totalScore += parseFloat(val || 0);
+              });
+            }
+            await run(`
+              INSERT INTO mock_tests (id, user_exam_id, name, test_date, section_scores, total_score, max_score, tier, notes)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+              uuidv4(),
+              userExamId,
+              m.name,
+              m.testDate,
+              JSON.stringify(m.sectionScores || {}),
+              totalScore,
+              m.maxScore || 100,
+              m.tier || 'Prelims',
+              m.notes || ''
+            ]);
+          }
+        }
+      }
+    }
+
+    res.json({ success: true, message: 'Sync restore completed successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ----------------------------------------------------
 // TOPIC & PROGRESS API
 // ----------------------------------------------------
@@ -407,6 +580,7 @@ app.get('/api/user-exams/:id/topics', async (req, res) => {
           t.topic as name,
           t.difficulty as canonical_difficulty,
           t.avg_weightage,
+          t.is_template,
           m.priority,
           m.recommended_resource,
           m.resource_chapter,

@@ -8,7 +8,6 @@ export default function Onboarding({ onComplete, backendUrl }) {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [exams, setExams] = useState([]);
   const [selectedExam, setSelectedExam] = useState(null);
-  const [targetDate, setTargetDate] = useState('');
   const [dailyGoalHrs, setDailyGoalHrs] = useState(2);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -80,7 +79,7 @@ export default function Onboarding({ onComplete, backendUrl }) {
         },
         body: JSON.stringify({
           examId: selectedExam.id,
-          targetDate,
+          targetDate: '',
           dailyGoalHrs: parseFloat(dailyGoalHrs)
         })
       });
@@ -233,16 +232,6 @@ export default function Onboarding({ onComplete, backendUrl }) {
             <h3 style={{ marginBottom: '1.2rem', fontSize: '1.1rem' }}>
               Study parameters for {selectedExam?.name}
             </h3>
-            <div className="form-group">
-              <label className="form-label">Target Exam Date</label>
-              <input
-                type="date"
-                className="form-input"
-                required
-                value={targetDate}
-                onChange={(e) => setTargetDate(e.target.value)}
-              />
-            </div>
             <div className="form-group">
               <label className="form-label">Daily Study Goal (Hours)</label>
               <input

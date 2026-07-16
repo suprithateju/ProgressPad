@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { updateExamBackup } from '../utils/backup';
 
-export default function Dashboard({ userExamId, backendUrl, onSwitchToAIExplain, onSwitchToAIQuiz, mobileView }) {
+export default function Dashboard({ userExamId, backendUrl, activeExamDetails, onSwitchToAIExplain, onSwitchToAIQuiz, mobileView }) {
   const [syllabus, setSyllabus] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -158,6 +159,7 @@ export default function Dashboard({ userExamId, backendUrl, onSwitchToAIExplain,
       if (!res.ok) throw new Error('Failed to load syllabus');
       const data = await res.json();
       setSyllabus(data);
+      updateExamBackup(userExamId, activeExamDetails?.daily_goal_hrs || 2.0, data);
       if (data.length > 0 && !newTopicSubjectId) {
         setNewTopicSubjectId(data[0].id);
       }

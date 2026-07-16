@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { updateMocksBackup } from '../utils/backup';
 
 export default function MockTests({ userExamId, backendUrl, examSlug, activeExamDetails }) {
   const [mocks, setMocks] = useState([]);
@@ -32,6 +33,7 @@ export default function MockTests({ userExamId, backendUrl, examSlug, activeExam
       if (res.ok) {
         const data = await res.json();
         setMocks(data);
+        updateMocksBackup(userExamId, data);
       }
     } catch (err) {
       console.error('Error fetching mock tests:', err);

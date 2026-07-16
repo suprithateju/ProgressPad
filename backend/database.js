@@ -1,20 +1,68 @@
 import sqlite3 from 'sqlite3';
+import pg from 'pg';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dbPath = join(__dirname, 'database.sqlite');
 
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Error opening database:', err);
-  } else {
-    console.log('Database connected successfully at:', dbPath);
+const usePostgres = !!process.env.DATABASE_URL;
+let db = null;
+let pgPool = null;
+
+if (usePostgres) {
+  console.log('PostgreSQL DATABASE_URL found. Initializing PG database driver pool...');
+  pgPool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false // Required for hosted PG like Supabase/Neon
+    }
+  });
+} else {
+  console.log('Using SQLite fallback database driver.');
+  db = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+      console.error('Error opening SQLite database:', err);
+    } else {
+      console.log('SQLite database connected successfully at:', dbPath);
+    }
+  });
+}
+
+// Convert SQLite '?' placeholders to PostgreSQL '$1, $2, ...' placeholders
+// and translate syntax like 'INSERT OR IGNORE'
+const translateSql = (sql) => {
+  if (!usePostgres) return sql;
+
+  let index = 1;
+  let pgSql = sql.replace(/\?/g, () => `$${index++}`);
+
+  // Convert SQLite-specific INSERT OR IGNORE INTO user_topic_progress
+  if (/INSERT OR IGNORE INTO user_topic_progress/i.test(pgSql)) {
+    pgSql = pgSql.replace(/INSERT OR IGNORE INTO user_topic_progress/gi, 'INSERT INTO user_topic_progress');
+    if (!/ON CONFLICT/i.test(pgSql)) {
+      pgSql += ' ON CONFLICT (user_exam_id, topic_id) DO NOTHING';
+    }
   }
-});
+
+  // Convert SQLite-specific INSERT OR IGNORE INTO topics (seed / onboarding)
+  if (/INSERT OR IGNORE INTO topics/i.test(pgSql)) {
+    pgSql = pgSql.replace(/INSERT OR IGNORE INTO topics/gi, 'INSERT INTO topics');
+    if (!/ON CONFLICT/i.test(pgSql)) {
+      pgSql += ' ON CONFLICT (pool_key, section, topic) DO NOTHING';
+    }
+  }
+
+  return pgSql;
+};
 
 // Helper function to query the database using Promises
 export const query = (sql, params = []) => {
+  if (usePostgres) {
+    const pgSql = translateSql(sql);
+    return pgPool.query(pgSql, params).then(res => res.rows);
+  }
+
   return new Promise((resolve, reject) => {
     db.all(sql, params, (err, rows) => {
       if (err) reject(err);
@@ -24,6 +72,11 @@ export const query = (sql, params = []) => {
 };
 
 export const get = (sql, params = []) => {
+  if (usePostgres) {
+    const pgSql = translateSql(sql);
+    return pgPool.query(pgSql, params).then(res => res.rows[0] || null);
+  }
+
   return new Promise((resolve, reject) => {
     db.get(sql, params, (err, row) => {
       if (err) reject(err);
@@ -33,6 +86,17 @@ export const get = (sql, params = []) => {
 };
 
 export const run = (sql, params = []) => {
+  if (usePostgres) {
+    // Skip SQLite-specific PRAGMA commands
+    if (/PRAGMA/i.test(sql)) {
+      return Promise.resolve({ id: null, changes: 0 });
+    }
+    const pgSql = translateSql(sql);
+    return pgPool.query(pgSql, params).then(res => {
+      return { id: null, changes: res.rowCount || 0 };
+    });
+  }
+
   return new Promise((resolve, reject) => {
     db.run(sql, params, function (err) {
       if (err) reject(err);
@@ -43,8 +107,10 @@ export const run = (sql, params = []) => {
 
 // Initialize database tables
 export const initDB = async () => {
-  // Enable foreign keys
-  await run('PRAGMA foreign_keys = ON;');
+  // Enable foreign keys on SQLite
+  if (!usePostgres) {
+    await run('PRAGMA foreign_keys = ON;');
+  }
 
   // 1. Exam Categories
   await run(`

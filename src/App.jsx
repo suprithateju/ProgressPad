@@ -4,10 +4,24 @@ import Dashboard from './components/Dashboard';
 import MockTests from './components/MockTests';
 import Analytics from './components/Analytics';
 import AISpace from './components/AISpace';
+import { getLocalBackup } from './utils/backup';
 
-const BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? 'http://localhost:5000'
-  : 'https://progress-pad.onrender.com';
+const getBackendUrl = () => {
+  if (import.meta.env.VITE_BACKEND_URL) {
+    return import.meta.env.VITE_BACKEND_URL;
+  }
+  const hostname = window.location.hostname;
+  const isLocal =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.endsWith('.local') ||
+    /^[0-9.]+$/.test(hostname) ||
+    hostname.includes(':');
+
+  return isLocal ? `http://${hostname}:5000` : 'https://progress-pad.onrender.com';
+};
+
+const BACKEND_URL = getBackendUrl();
 
 export default function App() {
   const [userExamId, setUserExamId] = useState(null);
@@ -39,7 +53,38 @@ export default function App() {
         }
       });
       if (res.ok) {
-        const data = await res.json();
+        let data = await res.json();
+        
+        // Auto-restore backup if database reset is detected on server (backend data is empty but we have local backup)
+        if (data.length === 0) {
+          const backup = getLocalBackup();
+          if (backup.enrolledExams && Object.keys(backup.enrolledExams).length > 0) {
+            console.log('Backend reset detected. Restoring database tables from local backup...');
+            try {
+              const syncRes = await fetch(`${BACKEND_URL}/api/users/me/sync-restore`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-User-Email': email
+                },
+                body: JSON.stringify({ enrolledExams: backup.enrolledExams })
+              });
+              if (syncRes.ok) {
+                const retryRes = await fetch(`${BACKEND_URL}/api/users/me/exams`, {
+                  headers: {
+                    'X-User-Email': email
+                  }
+                });
+                if (retryRes.ok) {
+                  data = await retryRes.json();
+                }
+              }
+            } catch (syncErr) {
+              console.error('Failed to sync-restore database from local backup:', syncErr);
+            }
+          }
+        }
+
         setEnrolledExams(data);
         
         if (data.length > 0) {
@@ -233,8 +278,8 @@ export default function App() {
 
         {activeExam && (
           <div className="user-badge">
-            <i className="ti ti-calendar" style={{ color: 'var(--accent)' }}></i>
-            <span>Exam target: <strong>{activeExam.target_date || 'Not Set'}</strong></span>
+            <i className="ti ti-alarm" style={{ color: 'var(--accent)' }}></i>
+            <span>Daily Goal: <strong>{activeExam.daily_goal_hrs || 2.0} hrs</strong></span>
           </div>
         )}
       </header>
@@ -247,6 +292,7 @@ export default function App() {
             <Dashboard
               userExamId={userExamId}
               backendUrl={BACKEND_URL}
+              activeExamDetails={activeExam}
               onSwitchToAIExplain={handleSwitchToAIExplain}
               onSwitchToAIQuiz={handleSwitchToAIQuiz}
               mobileView={mobileTab}
