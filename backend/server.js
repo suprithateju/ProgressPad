@@ -25,13 +25,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize Database & Seed data on startup
-try {
-  await initDB();
-  await seedDatabase();
-} catch (err) {
-  console.error('Failed to initialize database during startup:', err);
-}
+// Initialize Database & Seed data on startup in the background
+// This prevents blocking the server startup and port listening, avoiding Render timeouts.
+initDB()
+  .then(() => {
+    return seedDatabase();
+  })
+  .catch(err => {
+    console.error('Failed to initialize or seed database during startup:', err);
+  });
+
 
 // ----------------------------------------------------
 // EXAM REGISTRY ENDPOINTS
